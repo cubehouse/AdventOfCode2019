@@ -3,6 +3,9 @@ class Grid {
         if (width <= 0 || height <= 0) {
             throw new Error('Width and height must be > 0');
         }
+
+        console.log(`Creating grid ${width} x ${height}`);
+
         // setup our grid
         this.cells = new Array(width).fill().map((null1, y) => new Array(height).fill().map((null2, x) => {
             return {
@@ -16,13 +19,18 @@ class Grid {
     Get(x, y, key) {
         if (!this.IsValidCell(x, y)) return undefined;
         if (key) {
-            return this.cells[y][x].key;
+            return this.cells[y][x][key];
         }
         return this.cells[y][x];
     }
 
     Set(x, y, key, val) {
-        return this.Get(x, y)[key] = val;
+        const cell = this.Get(x, y);
+        if (cell === undefined) {
+            console.error(`Failed to set key at ${x}, ${y}. Invalid cell.`);
+            console.log(this.cells[0].length);
+        }
+        return cell[key] = val;
     }
 
     ForEach(fn) {
