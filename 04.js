@@ -31,10 +31,24 @@ Advent.GetInput().then((input) => {
     const validDigits = digits.filter(IsPWValid);
 
     return Advent.Submit(validDigits.length).then(() => {
-        // TODO - puzzle answer 2
-        let answer2 = 0;
+        const ValidStep2 = (x) => {
+            // remove groups of 3 or more
+            const str = x.toString().replace(/(\d)\1{2,}/g, '');
 
-        //return Advent.Submit(answer2, 2);
+            // re-calculate adjacent digits
+            let hasAdjacentDigits = false;
+            for(let i=0; i<str.length-1; i++) {
+                if (str[i] === str[i+1]) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // filter existing passwords from part 1
+        const part2Digits = validDigits.filter(ValidStep2);
+
+        return Advent.Submit(part2Digits.length, 2);
     });
 }).catch((e) => {
     console.log(e);
