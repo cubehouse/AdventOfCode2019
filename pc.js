@@ -12,6 +12,7 @@ class PC {
                 args: 0,
                 func: (pc) => {
                     pc.finished = true;
+                    return Promise.resolve();
                 },
             },
         };
@@ -28,16 +29,22 @@ class PC {
     }
 
     Exec() {
-        const op = this.opcodes[this.memory[this.PC]];
-        if (op === undefined) {
-            throw new Error(`Unknown opcode ${this.memory[this.PC]}`);
+        if (!this.Finished) {
+            const op = this.opcodes[this.memory[this.PC]];
+            if (op === undefined) {
+                throw new Error(`Unknown opcode ${this.memory[this.PC]}`);
+            }
+
+            const args = [this].concat(this.memory.slice(this.PC + 1, this.PC + 1 + op.args));
+
+            return op.func.apply(this, args).then((result) => {
+                this.PC += op.args + 1;
+
+                return Promise.resolve(result);
+            });
+        } else {
+            return Promise.resolve();
         }
-
-        const args = [this].concat(this.memory.slice(this.PC + 1, this.PC + 1 + op.args));
-
-        op.func.apply(this, args);
-
-        this.PC += op.args + 1;
     }
 
     Get(idx) {
@@ -51,6 +58,26 @@ class PC {
     get Finished() {
         return this.finished;
     }
+
+    Run() {
+        return new Promise((resolve) => {
+            const outputs = [];
+
+            const WhileRun = () => {
+                if (this.finished) {
+                    return resolve(outputs);
+                }
+                return this.Exec().then((out) => {
+                    if (out !== undefined) {
+                        outputs.push(out);
+                    }
+                    process.nextTick(WhileRun);
+                });
+            };
+
+            WhileRun();
+        });
+    }
 }
 
 class Task2PC extends PC {
@@ -62,6 +89,7 @@ class Task2PC extends PC {
             args: 3,
             func: (pc, a, b, out) => {
                 pc.Set(out, pc.Get(a) + pc.Get(b));
+                return Promise.resolve();
             },
         });
 
@@ -70,6 +98,7 @@ class Task2PC extends PC {
             args: 3,
             func: (pc, a, b, out) => {
                 pc.Set(out, pc.Get(a) * pc.Get(b));
+                return Promise.resolve();
             },
         });
     }
@@ -80,20 +109,22 @@ module.exports = PC;
 if (!module.parent) {
     const TestPC = (input, output) => {
         const P = new Task2PC(input);
-        while(!P.Finished) {
-            P.Exec();
-        }
-        const result = P.memory.join(',');
-        if (result !== output) {
-            throw new Error(`Failed PC:\n${input}\n${result}\nShould be:\n${output}`);
-        }
+        return P.Run().then((outputs) => {
+            const result = P.memory.join(',');
+            if (result !== output) {
+                throw new Error(`Failed PC:\n${input}\n${result}\nShould be:\n${output}`);
+            }
+            return Promise.resolve(outputs);
+        });
     };
 
-    TestPC('1,0,0,0,99', '2,0,0,0,99');
-    TestPC('2,3,0,3,99', '2,3,0,6,99');
-    TestPC('2,4,4,5,99,0', '2,4,4,5,99,9801');
-    TestPC('1,1,1,4,99,5,6,0,99', '30,1,1,4,2,5,6,0,99');
-    TestPC('1,9,10,3,2,3,11,0,99,30,40,50', '3500,9,10,70,2,3,11,0,99,30,40,50');
-    
-    console.log('Tests successful!');
+    Promise.all([
+        TestPC('1,0,0,0,99', '2,0,0,0,99'),
+        TestPC('2,3,0,3,99', '2,3,0,6,99'),
+        TestPC('2,4,4,5,99,0', '2,4,4,5,99,9801'),
+        TestPC('1,1,1,4,99,5,6,0,99', '30,1,1,4,2,5,6,0,99'),
+        TestPC('1,9,10,3,2,3,11,0,99,30,40,50', '3500,9,10,70,2,3,11,0,99,30,40,50'),
+    ]).then(() => {
+        console.log('Tests successful!');
+    });
 }
