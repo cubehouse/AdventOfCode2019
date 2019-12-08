@@ -12,15 +12,21 @@ const ParseArgs = (f) => {
 };
 
 class Com extends EventEmitter {
-    constructor(program, input = 0) {
+    constructor(program, input = null) {
         super();
 
         this.PC = 0;
         this.memory = program.split(',').map(Number);
 
-        this.input = input;
+        this.inputs = [];
+        this.inputWaitPromise = null;
+        if (input !== null) {
+            this.inputs.push(input);
+        }
+
         this.output = undefined;
 
+        this.running = false;
         this.done = false;
 
         this.ops = {
@@ -33,11 +39,19 @@ class Com extends EventEmitter {
                 return Promise.resolve();
             },
             3: (out) => {
-                this.emit('input', this);
-                this.memory[out] = this.input;
+                const nextInput = this.inputs.shift();
+                // wait for next input if we have run out
+                if (nextInput === undefined) {
+                    return new Promise((resolve) => {
+                        this.inputWaitPromise = () => {
+                            this.memory[out] = this.inputs.shift();
+                            resolve();
+                        };
+                    });
+                }
                 
-                // clear our input once used
-                this.input = null;
+                this.memory[out] = nextInput;
+
                 return Promise.resolve();
             },
             4: (a) => {
@@ -134,17 +148,19 @@ class Com extends EventEmitter {
     }
 
     Run() {
+        if (this.running) return Promise.resolve();
+
         return new Promise((resolve, reject) => {
             const outputs = [];
 
             const WhileRun = () => {
                 if (this.done) {
+                    this.running = false;
                     return resolve(outputs);
                 }
                 return this.Tick().then((out) => {
                     if (out !== undefined) {
                         outputs.push(out);
-                        this.emit('output', out);
                     }
                     process.nextTick(WhileRun);
                 }).catch((err) => {
@@ -152,8 +168,19 @@ class Com extends EventEmitter {
                 });
             };
 
+            this.PC = 0;
+            this.running = true;
             WhileRun();
         });
+    }
+
+    Input(x) {
+        this.inputs.push(x);
+
+        if (this.inputWaitPromise !== null) {
+            this.inputWaitPromise();
+            this.inputWaitPromise = null;
+        }
     }
 }
 

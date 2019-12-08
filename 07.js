@@ -3,40 +3,32 @@ const Intcode = require('./intcode');
 
 const RunSequence = (input, sequence) => {
     return new Promise((resolve) => {
-        let lastOutput = 0;
-        let PCIdx = 0;
-
-        const RunNextPC = () => {
-            if (PCs[PCIdx]) {
-                PCs[PCIdx].Run().then((outputs) => {
-                    lastOutput = outputs[outputs.length - 1];
-                    RunNextPC();
-                });
-                PCIdx++;
-            } else {
-                return resolve(lastOutput);
-            }
-        };
-
         // build our PCs
         const PCs = sequence.split(',').map(Number).map((seq, idx) => {
             const PC = new Intcode(input);
+            PC.Input(seq);
 
-            const inputs = [seq];
-            if (idx === 0) inputs.push(0);
+            if (idx === 0) {
+                PC.Input(0);
+            }
 
-            PC.on('input', (PC) => {
-                if (inputs.length > 0) {
-                    PC.input = inputs.shift();
-                } else {
-                    PC.input = lastOutput;
+            PC.on('output', (a) => {
+                const NextPC = (idx + 1) % PCs.length;
+                //console.log(`Output from PC ${idx}: ${a} => Input to PC ${NextPC}`);
+
+                // resolve if we're trying to pass input to a finished PC
+                if (PCs[NextPC].done) {
+                    return resolve(a);
                 }
+
+                // push our output to the next PC's input stack
+                PCs[NextPC].Input(a);
             });
+
+            PC.Run();
 
             return PC;
         });
-
-        RunNextPC();
     });
 };
 
@@ -52,10 +44,10 @@ Advent.GetInput().then((input) => {
         if (res !== 43210) throw new Error('Unit test 1 failed');
     });
     RunSequence('3,23,3,24,1002,24,10,24,1002,23,-1,23,101,5,23,23,1,24,23,23,4,23,99,0,0', '0,1,2,3,4').then((res) => {
-        if (res !== 54321) throw new Error('Unit test 1 failed');
+        if (res !== 54321) throw new Error('Unit test 2 failed');
     });
     RunSequence('3,31,3,32,1002,32,10,32,1001,31,-2,31,1007,31,0,33,1002,33,7,33,1,33,31,31,1,32,31,31,4,31,99,0,0,0', '1,0,4,3,2').then((res) => {
-        if (res !== 65210) throw new Error('Unit test 1 failed');
+        if (res !== 65210) throw new Error('Unit test 3 failed');
     });
 
     // build all permutations of our input phases
