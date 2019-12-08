@@ -42,6 +42,28 @@ class SpaceImage {
         const twos = pixels.filter((x) => x === 2);
         return ones.length * twos.length;
     }
+
+    DecodePart2() {
+        const Image = this.GetLayerPixels(this.layers.length - 1);
+        for(let i=this.layers.length - 2; i>=0; i--) {
+            const NewPixels = this.GetLayerPixels(i);
+            NewPixels.forEach((p, idx) => {
+                if (p !== 2) {
+                    Image[idx] = p;
+                }
+            });
+        }
+
+        const splitRows = new RegExp(`.{1,${this.width}}`, 'g');
+        const rows = Image.join('').match(splitRows);
+        rows.forEach((row) => {
+            console.log(row.split('').map((x)=> {
+                return x === '1' ? 'X' : ' ';
+            }).join(''));
+        });
+
+        return Image;
+    }
 }
 
 Advent.GetInput().then((input) => {
@@ -50,10 +72,10 @@ Advent.GetInput().then((input) => {
     const answer1 = Image1.ValidatePart1();
 
     return Advent.Submit(answer1).then(() => {
-        // TODO - puzzle answer 2
-        let answer2 = 0;
+        // puzzle answer 2
+        Image1.DecodePart2();
 
-        //return Advent.Submit(answer2, 2);
+        // Need to human-read this one :)
     });
 }).catch((e) => {
     console.log(e);
