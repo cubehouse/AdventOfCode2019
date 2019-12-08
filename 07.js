@@ -32,6 +32,23 @@ const RunSequence = (input, sequence) => {
     });
 };
 
+const FindHighestSequence = (input, values) => {
+    // build all permutations of our input phases
+    const perms = permutations(values);
+
+    let highest = 0;
+    return perms.reduce((p, n) => {
+        return p.then(() => {
+            return RunSequence(input, n.join(',')).then((val) => {
+                highest = Math.max(highest, val);
+                return Promise.resolve();
+            });
+        });
+    }, Promise.resolve()).then(() => {
+        return Promise.resolve(highest);
+    })
+};
+
 // https://stackoverflow.com/a/56847118
 const rotations = ([l, ...ls], right=[]) =>
 l ? [[l, ...ls, ...right], ...rotations(ls, [...right, l])] : []
@@ -40,6 +57,7 @@ const permutations = ([x, ...xs]) =>
 x ? permutations(xs).flatMap((p) => rotations([x, ...p])) : [[]]
 
 Advent.GetInput().then((input) => {
+    // part 1 unit tests
     RunSequence('3,15,3,16,1002,16,10,16,1,16,15,15,4,15,99,0,0', '4,3,2,1,0').then((res) => {
         if (res !== 43210) throw new Error('Unit test 1 failed');
     });
@@ -50,22 +68,21 @@ Advent.GetInput().then((input) => {
         if (res !== 65210) throw new Error('Unit test 3 failed');
     });
 
-    // build all permutations of our input phases
-    const values = "01234";
-    const perms = permutations(values);
+    // part 2 unit tests
+    RunSequence('3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26,27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5', '9,8,7,6,5').then((res) => {
+        if (res !== 139629729) throw new Error('Unit test 4 failed');
+    });
+    RunSequence('3,52,1001,52,-5,52,3,53,1,52,56,54,1007,54,5,55,1005,55,26,1001,54,-5,54,1105,1,12,1,53,54,53,1008,54,0,55,1001,55,1,55,2,53,55,53,4,53,1001,56,-1,56,1005,56,6,99,0,0,0,0,10', '9,7,8,5,6').then((res) => {
+        if (res !== 18216) throw new Error('Unit test 5 failed');
+    });
 
-    let highest = 0;
-    perms.reduce((p, n) => {
-        return p.then(() => {
-            return RunSequence(input, n.join(',')).then((val) => {
-                highest = Math.max(highest, val);
-                return Promise.resolve();
-            });
-        });
-    }, Promise.resolve()).then(() => {
+    // part 1
+    return FindHighestSequence(input, "01234").then((highest) => {
         return Advent.Submit(highest).then(() => {
-            // TODO - part 2
-            //return Advent.Submit(answer2, 2);
+            // part 2
+            return FindHighestSequence(input, "56789").then((highest2) => {
+                return Advent.Submit(highest2, 2);
+            });
         });
     });
 }).catch((e) => {
