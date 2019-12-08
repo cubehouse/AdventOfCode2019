@@ -33,11 +33,16 @@ class Com extends EventEmitter {
                 return Promise.resolve();
             },
             3: (out) => {
+                this.emit('input', this);
                 this.memory[out] = this.input;
+                
+                // clear our input once used
+                this.input = null;
                 return Promise.resolve();
             },
             4: (a) => {
                 this.output = a;
+                this.emit('output', this.output);
                 return Promise.resolve(this.output);
             },
             5: (a, b) => {
