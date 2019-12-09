@@ -29,6 +29,8 @@ class Com extends EventEmitter {
         this.running = false;
         this.done = false;
 
+        this.relativeBase = 0;
+
         this.ops = {
             1: (a, b, out) => {
                 this.memory[out] = a + b;
@@ -79,6 +81,10 @@ class Com extends EventEmitter {
                 this.memory[out] = (a === b) ? 1 : 0;
                 return Promise.resolve();
             },
+            9: (a) => {
+                this.relativeBase += a;
+                return Promise.resolve();
+            },
             99: () => {
                 this.done = true;
                 return Promise.resolve();
@@ -96,6 +102,7 @@ class Com extends EventEmitter {
             this.funcs[opCode] = {
                 argNum: args.length,
                 argNames: args,
+                defaultParamModes: args.map((arg) => arg.indexOf('out') === 0 ? 1 : 0),
             };
         });
     }
@@ -103,7 +110,7 @@ class Com extends EventEmitter {
     Tick() {
         if (!this.done) {
             // parse opcode
-            const opStr = this.memory[this.PC].toString().padStart(8, '0');
+            const opStr = this.memory[this.PC].toString();
             const op = Number(opStr.slice(-2));
 
             const func = this.ops[op];
@@ -112,25 +119,36 @@ class Com extends EventEmitter {
                 this.PC++;
 
                 // build param mode array
-                const paramModes = [];
-                for(let i=opStr.length-3; i>=0; i--) {
-                    paramModes.push(Number(opStr[i]));
-                }
+                const paramModes = funcData.defaultParamModes.map((def, idx) => {
+                    const opStrIdx = opStr.length - 3 - idx;
+                    // do we have an override mode?
+                    if (opStrIdx >= 0) {
+                        return Number(opStr[opStrIdx]);
+                    }
+                    // otherwise use function's default
+                    return def;
+                });
+
+                //console.log(paramModes);
                 
                 // build arguments to pass to opcode function
                 const args = [];
                 for(let i=0; i<funcData.argNum; i++) {
-                    // get param mode (any arg name starting with out is always in immediate mode though)
-                    const paramMode = funcData.argNames[i].indexOf('out') === 0 ? 1 : paramModes[i];
-                    const val = this.memory[this.PC + i];
+                    // get param mode
+                    const paramMode = paramModes[i];
+                    const val = this.memory[this.PC + i] || 0;
                     switch(paramMode) {
                         case 0:
                             // position mode
-                            args.push(this.memory[val]);
+                            args.push(this.memory[val] || 0);
                             break;
                         case 1:
                             // immediate mode
                             args.push(val);
+                            break;
+                        case 2:
+                            // relative mode
+                            args.push(this.relativeBase + val);
                             break;
                         default:
                             return Promise.reject(new Error(`Unknown parameter mode: ${paramMode} for opCode ${opStr} [MEM#${this.PC}]\n${this.memory}`));
@@ -392,4 +410,15 @@ if (!module.parent) {
         Assert(PC.output === 236453);
     });
 
+    Test('1102,34915192,34915192,7,4,7,99,0').then((PC) => {
+        Assert(PC.output === 1219070632396864);
+    });
+
+    Test('104,1125899906842624,99').then((PC) => {
+        Assert(PC.output === 1125899906842624);
+    });
+
+    Test('9,1,203,1,99', 8).then((PC) => {
+        AssertMemory(PC, '9,1,8,1,99');
+    });
 }
