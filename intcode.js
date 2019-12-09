@@ -25,6 +25,7 @@ class Com extends EventEmitter {
         }
 
         this.output = undefined;
+        this.outputs = [];
 
         this.running = false;
         this.done = false;
@@ -58,6 +59,7 @@ class Com extends EventEmitter {
             },
             4: (a) => {
                 this.output = a;
+                this.outputs.push(a);
                 this.emit('output', this.output);
                 return Promise.resolve(this.output);
             },
@@ -128,8 +130,6 @@ class Com extends EventEmitter {
                     // otherwise use function's default
                     return def;
                 });
-
-                //console.log(paramModes);
                 
                 // build arguments to pass to opcode function
                 const args = [];
@@ -137,21 +137,36 @@ class Com extends EventEmitter {
                     // get param mode
                     const paramMode = paramModes[i];
                     const val = this.memory[this.PC + i] || 0;
-                    switch(paramMode) {
-                        case 0:
-                            // position mode
-                            args.push(this.memory[val] || 0);
-                            break;
-                        case 1:
-                            // immediate mode
-                            args.push(val);
-                            break;
-                        case 2:
-                            // relative mode
-                            args.push(this.relativeBase + val);
-                            break;
-                        default:
-                            return Promise.reject(new Error(`Unknown parameter mode: ${paramMode} for opCode ${opStr} [MEM#${this.PC}]\n${this.memory}`));
+                    const IsLiteralMode = funcData.argNames[i].indexOf('out') === 0;
+                    if (IsLiteralMode)
+                    {
+                        switch(paramMode) {
+                            case 0:
+                            case 1:
+                                // immediate mode
+                                args.push(val);
+                                break;
+                            case 2:
+                                args.push(this.relativeBase + val);
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        switch(paramMode) {
+                            case 0:
+                                // position mode
+                                args.push(this.memory[val] || 0);
+                                break;
+                            case 1:
+                                // immediate mode
+                                args.push(val);
+                                break;
+                            case 2:
+                                // relative mode
+                                args.push(this.memory[this.relativeBase + val]);
+                                break;
+                        }
                     }
                 }
 
@@ -408,6 +423,10 @@ if (!module.parent) {
     223,1005,224,659,101,1,223,223,1108,226,226,224,102,2,223,223,1006,224,674,
     1001,223,1,223,4,223,99,226`, 5).then((PC) => {
         Assert(PC.output === 236453);
+    });
+
+    Test('109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99').then((PC) => {
+        Assert(PC.outputs.join(',') === '109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99');
     });
 
     Test('1102,34915192,34915192,7,4,7,99,0').then((PC) => {
