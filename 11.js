@@ -107,7 +107,12 @@ Advent.GetInput().then((input) => {
     return P.Run(input).then(() => {
         const PanelsPainted = Object.keys(P.Grid).length;
         return Advent.Submit(PanelsPainted).then(() => {
-            console.log('Done!');
+            const P2 = new Painter();
+            P2.Write(1);
+            return P2.Run(input).then(() => {
+                P2.Print();
+                console.log('Done! Submit the answer manually');
+            });
         });
     });
 }).catch((e) => {
