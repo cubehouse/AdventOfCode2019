@@ -215,6 +215,21 @@ class Com extends EventEmitter {
             this.inputWaitPromise = null;
         }
     }
+
+    GetOutput() {
+        if (this.nextOutputPromise) {
+            return this.nextOutputPromise;
+        }
+
+        this.nextOutputPromise = new Promise((resolve) => {
+            const OnOutput = (out) => {
+                resolve(out);
+                this.nextOutputPromise = null;
+            };
+            this.once('output', OnOutput);
+        });
+        return this.nextOutputPromise;
+    }
 }
 
 module.exports = Com;
