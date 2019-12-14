@@ -22,24 +22,25 @@ class Nanofactory {
 
         // build object of outputs to the recipes that can make them
         this.outputs = {};
+        this.spareMaterial = {};
         this.recipes.forEach((r) => {
             r.o.forEach((o) => {
                 this.outputs[o.mat] = r;
+                this.spareMaterial[o.mat] = 0;
             });
         });
+
     }
 
-    Part1() {
+    Part1(wantedFuel = 1) {
         // what we still need to process
         const needs = [{
             mat: 'FUEL',
-            num: 1,
+            num: wantedFuel,
         }, {
             mat: 'ORE',
             num: 0,
         }];
-
-        const spareMaterial = {};
 
         const AddNeed = (material, num) => {
             // push our new input to our need list
@@ -62,30 +63,30 @@ class Nanofactory {
                 return;
             }
 
-            // check if we already have some of this material
-            if (spareMaterial[material]) {
-                const spareUsed = Math.min(spareMaterial[material], numNeeded);
-                numNeeded -= spareUsed;
-                spareMaterial[material] -= spareUsed;
-            } else {
-                spareMaterial[material] = 0;
-            }
+            // use up any spares
+            const spareUsed = Math.min(this.spareMaterial[material], numNeeded);
+            numNeeded -= spareUsed;
+            this.spareMaterial[material] -= spareUsed;
 
             // find recipe to make this material
             const recipe = this.outputs[material];
-            while (numNeeded > 0) {
-                // add inputs for recipe as new needs
-                recipe.i.forEach((i) => {
-                    AddNeed(i.mat, i.num);
-                });
-                // track how many these inputs have satisfied
-                numNeeded -= recipe.o[0].num;
 
-                // if we have gone over, add the spares to our pile in case they can be used later
-                if (numNeeded < 0) {
-                    spareMaterial[material] += -numNeeded;
-                    numNeeded = 0;
-                }
+            // how many times do we want the recipe to be run to get numNeeded amount of outputs?
+            const recipeMaterialOutputs = recipe.o.find(x => x.mat === material).num;
+            const recipeRunsNeeded = Math.ceil(numNeeded / recipeMaterialOutputs);
+            
+            // add inputs for recipe as new needs
+            recipe.i.forEach((i) => {
+                AddNeed(i.mat, i.num * recipeRunsNeeded);
+            });
+
+            // track how many these inputs have satisfied
+            numNeeded -= recipeMaterialOutputs * recipeRunsNeeded;
+
+            // if we have gone over, add the spares to our pile in case they can be used later
+            if (numNeeded < 0) {
+                this.spareMaterial[material] += -numNeeded;
+                numNeeded = 0;
             }
         };
 
@@ -94,8 +95,8 @@ class Nanofactory {
         }
 
         return {
-            oreNeeded: needs[0].num,
-            spareMaterials: spareMaterial,
+            oreNeeded: needs.find(x => x.mat === 'ORE').num,
+            spareMaterials: this.spareMaterial,
         };
     }
 }
@@ -104,6 +105,7 @@ function TestInput(input, ore) {
     const Tester = new Nanofactory(input.split(/\n/g));
     const Result = Tester.Part1();
     if (Result.oreNeeded !== ore) {
+        console.error(`ERROR: Wanted ${ore}, got ${Result.oreNeeded}`);
         throw new Error('Test Failed');
     }
 }
@@ -165,7 +167,30 @@ Advent.GetInput().then((input) => {
     const Machine1 = new Nanofactory(input);
     const Result = Machine1.Part1();
     return Advent.Submit(Result.oreNeeded).then(() => {
-        console.log('Done');
+        const tryNum = (fuelTarget) => {
+            const Machine = new Nanofactory(input);
+            const Result = Machine.Part1(fuelTarget);
+            return Result.oreNeeded;
+        };
+
+        // binary search to find answer
+        const bSearch = (start, end) => {
+            // find mid-point
+            const midPoint = start + Math.floor((end - start) / 2);
+            if (midPoint === start) {
+                return midPoint;
+            }
+            const result = tryNum(midPoint);
+
+            if (result > 1000000000000) {
+                return bSearch(start, midPoint);
+            } else {
+                return bSearch(midPoint, end);
+            }
+        };
+        const answer2 = bSearch(0, 1000000000000);
+
+        return Advent.Submit(answer2, 2);
     });
 }).catch((e) => {
     console.log(e);
