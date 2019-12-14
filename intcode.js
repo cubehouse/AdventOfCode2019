@@ -45,6 +45,13 @@ class Com extends EventEmitter {
                 const nextInput = this.inputs.shift();
                 // wait for next input if we have run out
                 if (nextInput === undefined) {
+                    // give external processes a chance to give input
+                    this.emit('input');
+                    if (this.inputs.length > 0) {
+                        this.memory[out] = this.inputs.shift();
+                        return Promise.resolve();
+                    }
+
                     return new Promise((resolve) => {
                         this.inputWaitPromise = () => {
                             this.memory[out] = this.inputs.shift();
