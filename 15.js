@@ -46,6 +46,8 @@ class RepairDroid {
         this.Grid.Write(this.pos.x, this.pos.y, 'D');
         this.Grid.WriteKey(this.pos.x, this.pos.y, 'distance', 0);
 
+        this.targetOutput = 2;
+
         this.Draw();
     }
 
@@ -67,6 +69,7 @@ class RepairDroid {
 
                 // mark current spot as empty ground
                 this.Grid.Write(this.pos.x, this.pos.y, '.');
+                this.Grid.WriteKey(this.pos.x, this.pos.y, 'revisit', false);
 
                 // move droid to new spot
                 this.pos.x = newPos.x;
@@ -82,7 +85,7 @@ class RepairDroid {
 
             this.Draw();
 
-            return Promise.resolve(output === 2);
+            return Promise.resolve(output === this.targetOutput);
         });
     }
 
@@ -147,9 +150,7 @@ class RepairDroid {
 
     RandomExplore() {
         return new Promise((resolve) => {
-            this.Run().then(() => {
-                return resolve();
-            });
+            this.Run();
 
             const ChooseDirection = () => {
                 const validDirs = [];
@@ -158,7 +159,7 @@ class RepairDroid {
                     const newCell = this.Grid.ReadCell(newPos.x, newPos.y);
 
                     // prioritise going in new directions!
-                    if (newCell === undefined) {
+                    if (newCell === undefined || newCell.revisit) {
                         return i;
                     }
 
@@ -172,6 +173,9 @@ class RepairDroid {
                     // only one valid direction, so this is a dead end!
                     //  mark this space as blocking so we won't try and visit it again
                     this.Grid.WriteKey(this.pos.x, this.pos.y, 'block', true);
+                } else if (validDirs.length === 0) {
+                    // run out of places to go!
+                    return resolve();
                 }
 
                 return validDirs[Math.floor(Math.random() * validDirs.length)];
@@ -230,7 +234,39 @@ Advent.GetInput().then((input) => {
         // get distance from start for the tile we land on
         const distanceToPoint = Droid.Grid.ReadKey(Droid.pos.x, Droid.pos.y, 'distance');
         return Advent.Submit(distanceToPoint).then(() => {
-            process.exit(0);
+            // switch target output to a non-existant type so we can fully explore the maze
+            Droid.targetOutput = 3;
+
+            // reset all cell distances
+            Object.keys(Droid.Grid.cells).forEach((cellID) => {
+                const cell = Droid.Grid.cells[cellID];
+                cell.distance = undefined;
+                // unblock all paths
+                if (cell.val === '.') {
+                    cell.block = false;
+                    cell.revisit = true;
+                }
+            });
+            // set oxygen system to distance 0
+            Droid.Grid.WriteKey(Droid.pos.x, Droid.pos.y, 'distance', 0);
+            Droid.Draw();
+
+            // randomly explore again
+            return Droid.RandomExplore().then(() => {
+                // find the cell furthest away from the oxygen system
+                const furthestTile = Object.keys(Droid.Grid.cells).reduce((p, cellID) => {
+                    const cell = Droid.Grid.cells[cellID];
+                    if (cell.distance !== undefined) {
+                        return Math.max(p, cell.distance);
+                    } else {
+                        return p;
+                    }
+                }, 0);
+
+                return Advent.Submit(furthestTile, 2).then(() => {
+                    process.exit(0); 
+                });
+            });
         });
     });
 }).catch((e) => {
