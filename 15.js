@@ -136,7 +136,9 @@ class RepairDroid {
 
         this.term.defaultColor();
         const currDistance = this.Grid.ReadKey(this.pos.x, this.pos.y, 'distance') || 0;
-        this.term.moveTo(0, 0, `Distance: ${currDistance.toString().padStart(9, '0')}`);
+        this.term.moveTo(1, 1, `Distance: ${currDistance.toString().padStart(9, '0')}`);
+
+        this.term.moveTo(1, this.Grid.Height + 2);
     }
 
     Run() {
