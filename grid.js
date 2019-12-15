@@ -1,76 +1,141 @@
 class Grid {
-    constructor(width, height) {
-        if (width <= 0 || height <= 0) {
-            throw new Error('Width and height must be > 0');
-        }
+    constructor() {
+        this.cells = {};
 
-        console.log(`Creating grid ${width} x ${height}`);
+        this.minX = null;
+        this.maxX = null;
+        this.minY = null;
+        this.maxY = null;
 
-        // setup our grid
-        this.cells = new Array(width).fill().map((null1, y) => new Array(height).fill().map((null2, x) => {
-            return {
+        this.fullRedraw = true;
+        this.drawCmds = [];
+
+        this.cacheWidth = 0;
+        this.cacheHeight = 0;
+    }
+
+    get Width() {
+        return this.maxX - this.minX + 1;
+    }
+    
+    get Height() {
+        return this.maxY - this.minY + 1;
+    }
+
+    ReadCell(x, y) {
+        return this.cells[`${x}_${y}`];
+    }
+
+    GetCreateCell(x, y) {
+        const cell = this.ReadCell(x, y);
+        if (cell === undefined) {
+            this.cells[`${x}_${y}`] = {
                 x,
                 y,
-                label: '.',
+                val: ' ',
             };
-        }));
-    }
 
-    Get(x, y, key) {
-        if (!this.IsValidCell(x, y)) return undefined;
-        if (key) {
-            return this.cells[y][x][key];
+            // calculate min/max of our grid
+            if (this.minX === null || this.maxX === null || this.minY === null || this.maxY === null) {
+                this.minX = x;
+                this.maxX = x;
+                this.minY = y;
+                this.maxY = y;
+                this.fullRedraw = true;
+            } else {
+                // if our dimentions change, request a full redraw
+                this.minX = Math.min(this.minX, x);
+                this.maxX = Math.max(this.maxX, x);
+                this.minY = Math.min(this.minY, y);
+                this.maxY = Math.max(this.maxY, y);
+            }
+
+            if (this.cacheWidth !== this.Width || this.cacheHeight !== this.Height) {
+                this.fullRedraw = true;
+                this.cacheWidth = this.Width;
+                this.cacheHeight = this.Height;
+            }
+
+            return this.cells[`${x}_${y}`];
         }
-        return this.cells[y][x];
+        return cell;
     }
 
-    Set(x, y, key, val) {
-        const cell = this.Get(x, y);
-        if (cell === undefined) {
-            console.error(`Failed to set key at ${x}, ${y}. Invalid cell.`);
-            console.log(this.cells[0].length);
+    Write(x, y, val) {
+        this.WriteKey(x, y, 'val', val);
+    }
+
+    WriteKey(x, y, key, val) {
+        const cell = this.GetCreateCell(x, y);
+        if (key === 'val' && cell.val !== val) {
+            this.AddDrawCall(x, y);
         }
-        return cell[key] = val;
+        cell[key] = val;
     }
 
-    ForEach(fn) {
-        this.cells.forEach((row) => {
-            row.forEach((cell) => {
-                fn(cell);
-            });
-        });
+    Read(x, y) {
+        return this.ReadKey(x, y, 'val');
+    }
+
+    ReadKey(x, y, key) {
+        const cell = this.ReadCell(x, y);
+        if (cell !== undefined) {
+            return cell[key];
+        }
+        return undefined;
     }
 
     Print() {
-        this.cells.forEach((row) => {
-            console.log(row.map((x) => x.label).join(""));
+        for(let y=this.minY; y<=this.maxY; y++) {
+            const row = [];
+            for(let x=this.minX; x<=this.maxX; x++) {
+                const cell = this.ReadCell(x, y);
+                row.push(cell === undefined ? ' ' : cell.val);
+            }
+            console.log(row.join(''));
+        }
+    }
+
+    AddDrawCall(x, y) {
+        this.drawCmds.push({
+            x,
+            y,
         });
     }
 
-    IsValidCell(x, y) {
-        return (
-            (x >= 0)
-            &&
-            (y >= 0)
-            &&
-            (y < this.cells.length)
-            &&
-            (x < this.cells[0].length)
-        );
+    GenerateFullRedrawCmds() {
+        this.drawCmds = [];
+
+        for(let y=this.minY; y<=this.maxY; y++) {
+            for(let x=this.minX; x<=this.maxX; x++) {
+                this.AddDrawCall(x, y);
+            }
+        }
+    }
+
+    Draw(cb) {
+        // if we want a full refresh, generate our draw cmds first
+        if (this.fullRedraw) {
+            this.GenerateFullRedrawCmds();
+            this.fullRedraw = false;
+        }
+
+        // call our incoming callback function with our draw calls
+        //  will only call changed cells
+        this.drawCmds.forEach((call) => {
+            cb(call.x - this.minX, call.y - this.minY, this.ReadCell(call.x, call.y));
+        });
     }
 }
 
 module.exports = Grid;
 
 if (!module.parent) {
-    const G = new Grid(2, 3);
-    console.log(G.cells);
-    G.Set(1, 0, 'label', 'X');
+    const G = new Grid();
+    G.Write(0, 0, '@');
+    G.Write(-1, 0, '>');
+    G.Write(-2, 0, '-');
+    G.Write(-3, 0, '-');
+    G.Write(0, 4, '_');
     G.Print();
-    console.log(G.Get(1, 0));
-    G.ForEach((cell) => {
-        console.log(`${cell.x},${cell.y}: ${cell.label}`);
-    });
-    console.log(G.IsValidCell(0,0));
-    console.log(G.IsValidCell(0,5));
 }
