@@ -40,12 +40,42 @@ class Screen {
             this.consoleRedraw = true;
         };
 
+        // grid buffer
+        this.grid = {};
+        this.gridDraws = [];
+        this.gridPanel = new terminalkit.ScreenBuffer({
+            dst: term,
+        });
+        this.gridRedraw = true;
+
         // start ticks!
         setTimeout(this.Tick.bind(this), 0);
     }
 
     OnResize() {
         this.requestRedraw = true;
+    }
+
+    Set(x, y, char, attr) {
+        const key = `${x}_${y}`;
+        if (this.grid[key] === undefined) {
+            this.grid[key] = {
+                x: x,
+                y: y,
+                attr: {},
+            };
+        }
+        const obj = this.grid[key];
+        obj.char = char;
+        if (attr) {
+            Object.keys(attr).forEach((k) => {
+                obj.attr[k] = attr[k];
+            });
+        }
+
+        this.gridDraws.push(key);
+        
+        this.gridRedraw = true;
     }
 
     GenDrawsFrame() {
@@ -92,6 +122,13 @@ class Screen {
             this.consoleRedraw = true;
             this.console.splice(0, this.console.length - term.height);
 
+            this.gridPanel.x = 2;
+            this.gridPanel.y = 2;
+            this.gridPanel.height = term.height - 2;
+            this.gridPanel.width = term.width - this.consoleWidth - 2;
+            this.gridPanel.clear();
+            this.gridRedraw = true;
+
             this.requestRedraw = false;
         }
 
@@ -99,6 +136,20 @@ class Screen {
             term.moveTo(draw.pos.x, draw.pos.y, draw.char);
         });
         this.draws.splice(0, this.draws.length);
+
+        if (this.gridRedraw) {
+            this.gridDraws.forEach((drawKey) => {
+                const draw = this.grid[drawKey];
+                this.gridPanel.put({
+                    x: draw.x,
+                    y: draw.y,
+                    attr: draw.attr,
+                }, draw.char);
+            });
+
+            this.gridPanel.draw();
+            this.gridRedraw = false;
+        }
 
         if (this.consoleRedraw) {
             this.consoleBuffer.draw();
@@ -144,4 +195,9 @@ if (!module.parent) {
     const S = new Screen({
         fps: 5,
     });
+    S.Set(0, 0, 'X');
+    S.Set(0, 1, '|');
+    S.Set(0, 2, '|');
+    S.Set(1, 2, '-');
+    console.log('Test');
 }
