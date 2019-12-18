@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "blessed": "^0.1.81",
     "dotenv": "^8.2.0",
     "terminal-kit": "^1.32.2"
   }
