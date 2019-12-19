@@ -17,20 +17,15 @@ class Screen extends EventEmitter {
         this.minY = null;
 
         this.log = [];
-        this.logWidth = 40;
+        this.logWidth = 80;
         console.log = (...args) => {
-            console.error(...args);
-            this.log.unshift(args.map(util.inspect).join(', '));
+            this.log.unshift(...args.map(util.inspect).map((x) => {
+                return x.slice(0, this.logWidth);
+            }));
+            this.log.splice(this.height, this.log.length - this.height);
 
-            // TODO - redraw console
-            this.log.forEach((log, idx) => {
-                //console.error(log, idx);
-                this.draws.push({
-                    x: this.frameWidth,
-                    y: idx + 1,
-                    char: log,
-                });
-            });
+            // redraw console
+            this.DrawLog();
         };
         
         this.fps = fps || 30;
@@ -140,6 +135,13 @@ class Screen extends EventEmitter {
 
         // clear our draw list
         this.draws.splice(0, this.draws.length);
+    }
+
+    DrawLog() {
+        this.log.forEach((log, idx) => {
+            program.move(this.frameWidth + 1, idx);
+            program.write(log);
+        });
     }
 
     Tick() {
