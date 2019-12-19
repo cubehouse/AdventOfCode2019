@@ -27,16 +27,20 @@ class Screen extends EventEmitter {
         program.hideCursor();
 
         program.key(['q', 'C-c'], (ch, key) => {
-            program.clear();
-            program.disableMouse();
-            program.showCursor();
-            program.normalBuffer();
+            this.Stop();
             process.exit(0);
         });
         program.on('mouse', (data) => {});
         
         // start ticking
         setTimeout(this.Tick.bind(this), 0);
+    }
+
+    Stop() {
+        program.clear();
+        program.disableMouse();
+        program.showCursor();
+        program.normalBuffer();
     }
 
     Redraw() {
@@ -98,7 +102,12 @@ class Screen extends EventEmitter {
 
         // process all our draw calls
         this.draws.forEach((draw) => {
-            program.move(draw.x - this.minX, draw.y - this.minY);
+            const x = draw.x - this.minX;
+            const y = draw.y - this.minY;
+            if (x >= this.width || y >= this.height) {
+                return;
+            }
+            program.move(x, y);
             program.write(draw.val);
         });
 
