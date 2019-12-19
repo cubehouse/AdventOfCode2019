@@ -3,6 +3,7 @@ const { performance } = require('perf_hooks');
 const EventEmitter = require('events');
 const blessed = require('blessed');
 const program = blessed.program();
+const util = require('util');
 
 class Screen extends EventEmitter {
     constructor({fps} = {}) {
@@ -14,6 +15,23 @@ class Screen extends EventEmitter {
 
         this.minX = null;
         this.minY = null;
+
+        this.log = [];
+        this.logWidth = 40;
+        console.log = (...args) => {
+            console.error(...args);
+            this.log.unshift(args.map(util.inspect).join(', '));
+
+            // TODO - redraw console
+            this.log.forEach((log, idx) => {
+                //console.error(log, idx);
+                this.draws.push({
+                    x: this.frameWidth,
+                    y: idx + 1,
+                    char: log,
+                });
+            });
+        };
         
         this.fps = fps || 30;
         this.lastFrameTime = performance.now();
@@ -51,10 +69,17 @@ class Screen extends EventEmitter {
 
     OnResize() {
         this.width = process.stdout.columns;
+        this.frameWidth = this.width - this.logWidth;
         this.height = process.stdout.rows;
         this.Redraw();
 
         this.emit('resize', this.width, this.height);
+    }
+
+    GetKey(x, y, key) {
+        const cell = this.Get(x, y);
+        if (cell === undefined) return undefined;
+        return cell[key];
     }
 
     Get(x, y) {
@@ -99,12 +124,14 @@ class Screen extends EventEmitter {
             }
             return a.y - b.y;
         });
+        
+        // TODO - group draws in same line into a single draw call
 
         // process all our draw calls
         this.draws.forEach((draw) => {
             const x = draw.x - this.minX;
             const y = draw.y - this.minY;
-            if (x >= this.width || y >= this.height) {
+            if (x >= this.frameWidth || y >= this.height) {
                 return;
             }
             program.move(x, y);
