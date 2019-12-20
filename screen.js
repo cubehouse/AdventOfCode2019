@@ -24,7 +24,6 @@ class Screen extends EventEmitter {
 
         this.screen = blessed.screen({
             smartCSR: true,
-            log: path.join(__dirname, 'screen.log'),
         });
         this.logBox = blessed.text({
             top: 0,
