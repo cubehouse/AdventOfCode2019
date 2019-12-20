@@ -87,12 +87,14 @@ class ScaffoldViewer {
             directions[(currDir + 1) % 4],
             directions[(currDir + 3) % 4],
         ];
-        const validDir = leftRight.find((x) => {
-            const dir = this.CharToDir(x);
+        const validDir = leftRight.find((char) => {
+            const dir = this.CharToDir(char);
             return this.ValidateCell(x + dir.x, y + dir.y);
         });
         if (validDir === undefined) return undefined;
-        return this.RayCast(x, y, validDir);
+        const rayResult = this.RayCast(x, y, validDir);
+        rayResult.turn = leftRight[0] === validDir ? 'R' : 'L';
+        return rayResult;
     }
 
     RayCast(x, y, dirChar) {
@@ -102,17 +104,37 @@ class ScaffoldViewer {
         while(this.ValidateCell(nextPos.x, nextPos.y)) {
             currentPos.x = nextPos.x;
             currentPos.y = nextPos.y;
-            nextPos.x += dir.x;
-            nextPos.y += dir.y;
+            nextPos.x = currentPos.x + dir.x;
+            nextPos.y = currentPos.y + dir.y;
         }
         return {
             oX: x, // origin
             oY: y,
             dX: currentPos.x, // destination (hit location)
             dY: currentPos.y,
-            dir: dir,
+            dir: dirChar,
             dist: Math.abs((currentPos.x - x) + (currentPos.y - y)),
         };
+    }
+
+    Part2() {
+        const robot = this.FindRobot();
+
+        console.log(robot);
+
+        let res;
+        do {
+            this.S.Draw();
+            res = this.RayCastLeftOrRight(robot.x, robot.y, robot.val);
+            if (res !== undefined) {
+                console.log(`${res.turn},${res.dist}`);
+                robot.x = res.dX;
+                robot.y = res.dY;
+                robot.val = res.dir;
+            }
+        } while (res !== undefined);
+        
+        console.log('Done');
     }
 }
 
@@ -125,8 +147,7 @@ Advent.GetInput().then((input) => {
     return P1.Run().then(() => {
         const answer1 = P1.Part1();
         return Advent.Submit(answer1).then(() => {
-            const robot = P1.FindRobot();
-            console.log(robot);
+            const answer2 = P1.Part2();
         });
     });
 }).catch((e) => {
