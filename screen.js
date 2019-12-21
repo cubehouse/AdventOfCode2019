@@ -10,6 +10,7 @@ class Screen extends EventEmitter {
         super();
 
         this.Grid = {};
+        this.styles = [];
 
         this.draws = [];
 
@@ -95,6 +96,13 @@ class Screen extends EventEmitter {
         this.mapBox.setContent('');
     }
 
+    AddStyle(search, style) {
+        this.styles.push({
+            search: search,
+            style,
+        });
+    }
+
     Redraw() {
         this.draws.splice(0, this.draws.length);
         for(let y=this.minY; y<=this.maxY; y++) {
@@ -138,10 +146,6 @@ class Screen extends EventEmitter {
 
         cell[key] = val;
 
-        if (key === 'style' && cell.val !== undefined) {
-            cell.val = `${cell.style}${cell.val}{/}`;
-        }
-
         const redrawCell = (key === 'val') || (key === 'style');
 
         if (redrawCell) {
@@ -151,7 +155,7 @@ class Screen extends EventEmitter {
             if (this.mapLines[y].length < x) {
                 this.mapLines[y] = this.mapLines[y].concat(new Array(x - this.mapLines[y].length));
             }
-            this.mapLines[y][x] = cell.val;
+            this.mapLines[y][x] = cell.val;//cell.style !== undefined ? `${cell.style}${cell.val}{/}` : cell.val;
 
             if (this.minX === null || this.minX > x || this.minY > y || this.maxX < x || this.maxY < y) {
                 this.minX = Math.min(x, this.minX);
@@ -166,17 +170,39 @@ class Screen extends EventEmitter {
         }
     }
 
+    GenCellString(cell) {
+        if (cell.val === undefined) return ' ';
+        let val = cell.val;
+        this.styles.forEach((s) => {
+            // TODO - run each regex over original val, but transplant any results into the built-up result string manually
+            if (cell.val.match(s.search)) {
+                val = cell.val.replace(s.search, `${s.style}$1{/}`);
+            }
+        });
+        if (cell.style !== undefined) {
+            val = `${cell.style}${val}{/}`;
+        }
+        return val;
+    }
+
     Draw() {
         if (this.draws.length === 0 && !this.logRedraw) return;
 
         const boxWidth = this.screen.width - this.logWidth;
         this.draws.filter((val, idx, arr) => arr.indexOf(val) === idx).forEach((y) => {
             const frameY = y - this.minY;
-            if (this.mapLines[y]) {
-                this.mapBox.setBaseLine(frameY, this.mapLines[y].slice(0, boxWidth - 1).join(''));
+
+            this.mapBox.setBaseLine(frameY, Object.values(this.Grid).filter(x => x.y === y).map(cell => this.GenCellString(cell)).join(''));
+
+            /*if (this.mapLines[y]) {
+                let lineStr = this.mapLines[y].slice(0, boxWidth - 1).join('');
+                this.styles.forEach((s) => {
+                    lineStr = lineStr.replace(s.search, `${s.style}$1{/}`);
+                });
+                this.mapBox.setBaseLine(frameY, lineStr);
             } else {
                 this.mapBox.setBaseLine(frameY, '');
-            }
+            }*/
         });
 
         // clear our draw list
