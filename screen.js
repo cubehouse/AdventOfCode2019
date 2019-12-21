@@ -6,7 +6,7 @@ const path = require('path');
 const util = require('util');
 
 class Screen extends EventEmitter {
-    constructor({fps} = {}) {
+    constructor({fps, logWidth} = {}) {
         super();
 
         this.Grid = {};
@@ -19,7 +19,7 @@ class Screen extends EventEmitter {
         this.maxY = null;
 
         this.log = [];
-        this.logWidth = 80;
+        this.logWidth = logWidth || 80;
         this.logRedraw = false;
 
         this.screen = blessed.screen({
@@ -40,23 +40,24 @@ class Screen extends EventEmitter {
                     fg: '#ffa500'
                 },
             },
+            tags: true,
         });
         this.screen.append(this.logBox);
         
         console.log = (...args) => {
-            //console.error.apply(this, args);
             if (args.length > 0) {
-                this.logBox.unshiftLine(args.map(util.inspect).join(' '));
+                this.logBox.unshiftLine(args.map(util.inspect).join(' ') + '{/}');
                 this.logRedraw = true;
                 this.Draw();
             }
         };
 
-        this.mapBox = blessed.box({
+        this.mapBox = blessed.text({
             top: 0,
             right: this.logWidth,
             width: "100%",
             scrollable: true,
+            tags: true,
         });
         this.screen.append(this.mapBox);
         this.mapLines = {};
@@ -133,17 +134,24 @@ class Screen extends EventEmitter {
                 y,
             };
         }
+        const cell = this.Grid[gridKey];
 
-        this.Grid[gridKey][key] = val;
+        cell[key] = val;
 
-        if (key === 'val') {
+        if (key === 'style' && cell.val !== undefined) {
+            cell.val = `${cell.style}${cell.val}{/}`;
+        }
+
+        const redrawCell = (key === 'val') || (key === 'style');
+
+        if (redrawCell) {
             if (this.mapLines[y] === undefined) {
-                this.mapLines[y] = '';
+                this.mapLines[y] = [];
             }
             if (this.mapLines[y].length < x) {
-                this.mapLines[y] = this.mapLines[y] + ' '.repeat(x - this.mapLines[y].length);
+                this.mapLines[y] = this.mapLines[y].concat(new Array(x - this.mapLines[y].length));
             }
-            this.mapLines[y] = this.mapLines[y].substr(0, x) + val + this.mapLines[y].substr(x + 1);
+            this.mapLines[y][x] = cell.val;
 
             if (this.minX === null || this.minX > x || this.minY > y || this.maxX < x || this.maxY < y) {
                 this.minX = Math.min(x, this.minX);
@@ -162,10 +170,10 @@ class Screen extends EventEmitter {
         if (this.draws.length === 0 && !this.logRedraw) return;
 
         const boxWidth = this.screen.width - this.logWidth;
-        this.draws.forEach((y) => {
+        this.draws.filter((val, idx, arr) => arr.indexOf(val) === idx).forEach((y) => {
             const frameY = y - this.minY;
             if (this.mapLines[y]) {
-                this.mapBox.setBaseLine(frameY, this.mapLines[y].substr(0, boxWidth));
+                this.mapBox.setBaseLine(frameY, this.mapLines[y].slice(0, boxWidth - 1).join(''));
             } else {
                 this.mapBox.setBaseLine(frameY, '');
             }
