@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const quietMode = false;
+
 const fs = require('fs');
 const util = require('util');
 const path = require('path');
@@ -15,12 +17,15 @@ if (!session) {
 }
 
 const obs = new PerformanceObserver((items) => {
-    console.log(`Took ${(items.getEntries()[0].duration / 1000).toFixed(2)} seconds`);
+    if (!quietMode) console.log(`Took ${(items.getEntries()[0].duration / 1000).toFixed(2)} seconds`);
     performance.clearMarks();
 });
 obs.observe({ entryTypes: ['measure'] });
 performance.mark('A');
-function exitHandler() {
+function exitHandler(e) {
+    if (e) {
+        console.error(e);
+    }
     performance.mark('B');
     performance.measure('A to B', 'A', 'B');
 }
@@ -52,7 +57,7 @@ Advent.GetInput().then((input) => {
         return Advent.Submit(answer2, 2);
     });*/
 }).catch((e) => {
-    console.log(e);
+    console.error(e);
 });`);
         console.log(`Written solution file ${i}: ${entryFileName}`);
     }
@@ -92,7 +97,7 @@ class Advent {
                     fs.writeSync(inputFile, chunk);
                 });
                 res.on('end', () => {
-                    console.log('Done');
+                    if (!quietMode) console.log('Done');
                     resolve();
                 });
             });
@@ -166,11 +171,11 @@ class Advent {
     }
 
     Submit(answer, level = 1) {
-        console.log(`Submitting answer ${answer} for part ${level}...`);
+        if (!quietMode) console.log(`Submitting answer ${answer} for part ${level}...`);
         return this.ReadRecord().then((record) => {
             // skip if we already have the corret answer
             if (record.parts[level-1].answer !== null) {
-                console.log(`* Already submitted correct answer for part ${level}`);
+                if (!quietMode) console.log(`* Already submitted correct answer for part ${level}`);
 
                 return Promise.resolve();
             }
@@ -219,9 +224,9 @@ class Advent {
                                 seconds = 60;
                             }
 
-                            if (seconds <= 5) seconds = 60;
+                            if (seconds <= 5 || Number.isNaN(seconds)) seconds = 60;
 
-                            console.log(`Too many incorrect guesses. Waiting ${seconds} seconds...`);
+                            if (!quietMode) console.log(`Too many incorrect guesses. Waiting ${seconds} seconds...`);
 
                             return new Promise((resolve, reject) => {
                                 setTimeout(() => {
@@ -234,7 +239,7 @@ class Advent {
                             record.parts[level-1].answer = answer;
                             this.WriteRecord();
 
-                            console.log(`Correct answer submitted!`);
+                            if (!quietMode) console.log(`Correct answer submitted!`);
 
                             return resolve();
                         }
@@ -243,7 +248,7 @@ class Advent {
                             record.parts[level-1].answer = answer;
                             this.WriteRecord();
                             
-                            console.log(`Correct answer already submitted!`);
+                            if (!quietMode) console.log(`Correct answer already submitted!`);
 
                             return resolve();
                         }
