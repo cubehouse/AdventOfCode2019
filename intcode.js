@@ -193,6 +193,8 @@ class Com extends EventEmitter {
         return new Promise((resolve, reject) => {
             const outputs = [];
 
+            let Ticks = 0;
+
             const WhileRun = () => {
                 if (this.done) {
                     this.running = false;
@@ -202,7 +204,13 @@ class Com extends EventEmitter {
                     if (out !== undefined) {
                         outputs.push(out);
                     }
-                    process.nextTick(WhileRun);
+                    // yield to NodejS sometimes
+                    Ticks = (Ticks + 1) % 1000;
+                    if (Ticks === 0) {
+                        setTimeout(WhileRun, 1);
+                    } else {
+                        process.nextTick(WhileRun);
+                    }
                 }).catch((err) => {
                     return reject(err);
                 });

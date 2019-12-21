@@ -44,11 +44,11 @@ class Screen extends EventEmitter {
         this.screen.append(this.logBox);
         
         console.log = (...args) => {
+            //console.error.apply(this, args);
             if (args.length > 0) {
-                args.map(util.inspect).forEach((x) => {
-                    this.logBox.unshiftLine(x);
-                });
+                this.logBox.unshiftLine(args.map(util.inspect).join(' '));
                 this.logRedraw = true;
+                this.Draw();
             }
         };
 
@@ -76,6 +76,22 @@ class Screen extends EventEmitter {
         setTimeout(this.Tick.bind(this), 0);
 
         this.screen.render();
+    }
+
+    Clear() {
+        Object.keys(this.Grid).forEach((k) => {
+            delete this.Grid[k];
+        });
+        Object.keys(this.mapLines).forEach((k) => {
+            delete this.mapLines[k];
+        });
+        this.draws.splice(0, this.draws.length);
+        this.minX = null;
+        this.minY = null;
+        this.maxX = null;
+        this.maxY = null;
+
+        this.mapBox.setContent('');
     }
 
     Redraw() {
@@ -159,6 +175,7 @@ class Screen extends EventEmitter {
         this.draws.splice(0, this.draws.length);
 
         this.screen.render();
+        
         this.logRedraw = false;
     }
 
