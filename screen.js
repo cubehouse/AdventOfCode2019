@@ -2,15 +2,23 @@
 const { performance } = require('perf_hooks');
 const EventEmitter = require('events');
 const blessed = require('blessed');
-const path = require('path');
 const util = require('util');
 
+const dirs = [
+    {x: 1, y: 0},
+    {x: 0, y: 1},
+    {x: -1, y: 0},
+    {x: 0, y: -1},
+];
+
 class Screen extends EventEmitter {
-    constructor({fps, logWidth} = {}) {
+    constructor({fps, logWidth, simulate} = {}) {
         super();
 
         this.Grid = {};
         this.styles = [];
+
+        this.simulate = simulate || false;
 
         this.draws = [];
 
@@ -49,7 +57,6 @@ class Screen extends EventEmitter {
             if (args.length > 0) {
                 this.logBox.unshiftLine(args.map(util.inspect).join(' ') + '{/}');
                 this.logRedraw = true;
-                this.Draw();
             }
         };
 
@@ -155,7 +162,7 @@ class Screen extends EventEmitter {
             if (this.mapLines[y].length < x) {
                 this.mapLines[y] = this.mapLines[y].concat(new Array(x - this.mapLines[y].length));
             }
-            this.mapLines[y][x] = cell.val;//cell.style !== undefined ? `${cell.style}${cell.val}{/}` : cell.val;
+            this.mapLines[y][x] = cell.val;
 
             if (this.minX === null || this.minX > x || this.minY > y || this.maxX < x || this.maxY < y) {
                 this.minX = Math.min(x, this.minX);
@@ -168,6 +175,57 @@ class Screen extends EventEmitter {
                 this.draws.push(y);
             }
         }
+    }
+
+    /** Runs func on everything in array todo until todo is empty */
+    RunTodoList(todo, func) {
+        return new Promise((resolve) => {
+            const Queue = () => {
+                if (this.simulate && (this.draws.length > 0 || this.logRedraw)) {
+                    setTimeout(Step, 0);
+                } else {
+                    process.nextTick(Step);
+                }
+            }
+            const Step = () => {
+                if (todo.length > 0) {
+                    const res = func(todo.shift());
+                    if (res !== undefined && res.then !== undefined) {
+                        res.then(() => {
+                            Queue();
+                        });
+                    } else {
+                        Queue();
+                    }
+                    return;
+                }
+                return resolve();
+            };
+            process.nextTick(Step);
+        });
+    }
+
+    FloodFill(x, y, cond, func) {
+        const todo = [{x, y}];
+        const visited = {};
+        const fill = (c) => {
+            visited[`${c.x},${c.y}`] = true;
+            const cell = this.Get(c.x, c.y);
+            if (cond(cell)) {
+                func(cell);
+                dirs.map(d => {
+                    return {
+                        x: cell.x + d.x,
+                        y: cell.y + d.y,
+                    };
+                }).filter(pos => visited[`${pos.x},${pos.y}`] === undefined).forEach(pos => {
+                    if (todo.find(t => t.x === pos.x && t.y === pos.y) === undefined) {
+                        todo.push({x: pos.x, y: pos.y});
+                    }
+                });
+            }
+        };
+        return this.RunTodoList(todo, fill);
     }
 
     GenCellString(cell) {
@@ -191,26 +249,14 @@ class Screen extends EventEmitter {
         const boxWidth = this.screen.width - this.logWidth;
         this.draws.filter((val, idx, arr) => arr.indexOf(val) === idx).forEach((y) => {
             const frameY = y - this.minY;
-
             this.mapBox.setBaseLine(frameY, Object.values(this.Grid).filter(x => x.y === y).map(cell => this.GenCellString(cell)).join(''));
-
-            /*if (this.mapLines[y]) {
-                let lineStr = this.mapLines[y].slice(0, boxWidth - 1).join('');
-                this.styles.forEach((s) => {
-                    lineStr = lineStr.replace(s.search, `${s.style}$1{/}`);
-                });
-                this.mapBox.setBaseLine(frameY, lineStr);
-            } else {
-                this.mapBox.setBaseLine(frameY, '');
-            }*/
         });
 
         // clear our draw list
         this.draws.splice(0, this.draws.length);
+        this.logRedraw = false;
 
         this.screen.render();
-        
-        this.logRedraw = false;
     }
 
     Tick() {
