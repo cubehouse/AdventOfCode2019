@@ -184,7 +184,7 @@ class Screen extends EventEmitter {
                 if (this.simulate && (this.draws.length > 0 || this.logRedraw)) {
                     setTimeout(Step, 0);
                 } else {
-                    process.nextTick(Step);
+                    setImmediate(Step);
                 }
             }
             const Step = () => {
