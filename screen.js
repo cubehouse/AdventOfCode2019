@@ -20,6 +20,7 @@ class Screen extends EventEmitter {
         this.styles = [];
 
         this.simulate = simulate || false;
+        this.paused = false;
 
         this.draws = [];
 
@@ -50,7 +51,7 @@ class Screen extends EventEmitter {
                     fg: '#ffa500'
                 },
             },
-            tags: true,
+            tags: false,
         });
         this.screen.append(this.logBox);
         
@@ -80,6 +81,9 @@ class Screen extends EventEmitter {
 
         this.screen.key(['escape', 'q', 'C-c'], () => {
             process.exit(0);
+        });
+        this.screen.key('p', () => {
+            this.paused = !this.paused;
         });
         
         // start ticking
@@ -192,6 +196,7 @@ class Screen extends EventEmitter {
     RunTodoList(todo, func) {
         return new Promise((resolve) => {
             const Queue = () => {
+                if (this.paused) return;
                 if (this.simulate && (this.draws.length > 0 || this.logRedraw)) {
                     setTimeout(Step, 0);
                 } else {
