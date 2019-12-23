@@ -16,6 +16,7 @@ class Screen extends EventEmitter {
         super();
 
         this.Grid = {};
+        this.Cells = [];
         this.styles = [];
 
         this.simulate = simulate || false;
@@ -87,6 +88,14 @@ class Screen extends EventEmitter {
         this.screen.render();
     }
 
+    ForEachCell(func) {
+        return this.Cells.forEach(func);
+    }
+
+    GetNeighbours(cell) {
+        return dirs.map(d => {return {x: cell.x + d.x, y: cell.y + d.y}}).map(p => this.Get(p.x, p.y));
+    }
+
     Clear() {
         Object.keys(this.Grid).forEach((k) => {
             delete this.Grid[k];
@@ -94,6 +103,7 @@ class Screen extends EventEmitter {
         Object.keys(this.mapLines).forEach((k) => {
             delete this.mapLines[k];
         });
+        this.Cells = [];
         this.draws.splice(0, this.draws.length);
         this.minX = null;
         this.minY = null;
@@ -148,6 +158,7 @@ class Screen extends EventEmitter {
                 x,
                 y,
             };
+            this.Cells.push(this.Grid[gridKey]);
         }
         const cell = this.Grid[gridKey];
 
