@@ -231,6 +231,16 @@ class Com extends EventEmitter {
         }
     }
 
+    InputStr(str) {
+        this.inputs.push(...str.split('').map(x => x.charCodeAt(0)));
+        if (str[str.length - 1] !== '\n') this.inputs.push(10);
+
+        if (this.inputWaitPromise !== null) {
+            this.inputWaitPromise();
+            this.inputWaitPromise = null;
+        }
+    }
+
     GetOutput() {
         if (this.nextOutputPromise) {
             return this.nextOutputPromise;
