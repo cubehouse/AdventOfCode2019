@@ -57,7 +57,7 @@ class Screen extends EventEmitter {
         
         console.log = (...args) => {
             if (args.length > 0) {
-                this.logBox.unshiftLine(args.map(util.inspect).join(' ') + '{/}');
+                this.logBox.unshiftLine(args.map(util.inspect).join(' '));
                 this.logRedraw = true;
             }
         };
