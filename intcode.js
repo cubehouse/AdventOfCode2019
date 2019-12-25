@@ -42,11 +42,12 @@ class Com extends EventEmitter {
                 return Promise.resolve();
             },
             3: (out) => {
+                this.emit('input');
+
                 const nextInput = this.inputs.shift();
                 // wait for next input if we have run out
                 if (nextInput === undefined) {
                     // give external processes a chance to give input
-                    this.emit('input');
                     if (this.inputs.length > 0) {
                         this.memory[out] = this.inputs.shift();
                         return Promise.resolve();
@@ -182,7 +183,7 @@ class Com extends EventEmitter {
                 // call Opcode function
                 return func.apply(this, args);
             } else {
-                return Promise.reject(new Error(`Unknown opcode: ${op} [MEM#${this.PC}]\n${this.memory}`));
+                return Promise.reject(new Error(`Unknown opcode: ${op}`));
             }
         }
     }
@@ -192,8 +193,6 @@ class Com extends EventEmitter {
 
         return new Promise((resolve, reject) => {
             const outputs = [];
-
-            let Ticks = 0;
 
             const WhileRun = () => {
                 if (this.done) {
@@ -205,12 +204,7 @@ class Com extends EventEmitter {
                         outputs.push(out);
                     }
                     // yield to NodejS sometimes
-                    Ticks = (Ticks + 1) % 1000;
-                    if (Ticks === 0) {
-                        setTimeout(WhileRun, 1);
-                    } else {
-                        process.nextTick(WhileRun);
-                    }
+                    setImmediate(WhileRun);
                 }).catch((err) => {
                     return reject(err);
                 });

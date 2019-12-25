@@ -28,6 +28,7 @@ function exitHandler(e) {
     }
     performance.mark('B');
     performance.measure('A to B', 'A', 'B');
+    process.exit(0);
 }
 process.on('exit', exitHandler);
 process.on('SIGINT', exitHandler);
