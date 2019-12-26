@@ -164,6 +164,9 @@ class Game extends EventEmitter {
 
         this.badItems = [];
 
+        this.commandWaiting = false;
+        this.commandQueue = [];
+
         // command history
         this.history = [];
         // track all locations the player navigates
@@ -190,12 +193,22 @@ class Game extends EventEmitter {
             this.Command(cmd);
             playerInput.clearValue();
         });
-        playerInput.on('cancel', () => {
-            playerInput.focus();
-        });
+    }
+
+    QueueCommand(str) {
+        if (this.commandWaiting) {
+            this.Command(str);
+        } else {
+            this.commandQueue.push(str);
+        }
     }
 
     Command(str) {
+        if (!this.commandWaiting) {
+            this.QueueCommand(str);
+            return;
+        }
+
         if (directions[str] !== undefined) {
             this.Command(directions[str]);
             return;
@@ -217,6 +230,8 @@ class Game extends EventEmitter {
         }
         this.history.push(str);
         console.log(str);
+
+        this.commandWaiting = false;
         this.PC.InputStr(str);
     }
 
@@ -394,16 +409,63 @@ class Game extends EventEmitter {
                 this.stringBuffer.push(asciiChar);
 
                 if (this.stringBuffer.slice(-8).join('') === 'Command?') {
+                    this.commandWaiting = true;
+
                     this.stringBuffer = this.stringBuffer.slice(0, -8);
                     this.FlushBuffer();
 
-                    playerInput.setContent('');
-                    playerInput.focus();
-
-                    this.emit('command');
+                    if (this.commandQueue.length > 0) {
+                        this.Command(this.commandQueue.shift());
+                    } else {
+                        playerInput.focus();
+                        this.emit('command');
+                    }
                 }
             }
         }
+    }
+
+    GetPath(a, b) {
+        const A = this.locations[a];
+        const B = this.locations[b];
+
+        if (A === undefined || B === undefined) {
+            return undefined;
+        }
+
+        const todo = [{
+            cell: A,
+            path: [],
+        }];
+        const visited = {};
+        while(todo.length > 0) {
+            const cell = todo.shift();
+            if (cell.cell.x === B.x && cell.cell.y === B.y) {
+                return cell.path;
+            }
+
+            const key = `${cell.cell.x},${cell.cell.y}`;
+            visited[key] = true;
+
+            // queue up each direction
+            cell.cell.doors.map(x => {
+                const diff = compassGrid[x];
+                return {
+                    x: cell.cell.x + diff.x,
+                    y: cell.cell.y + diff.y,
+                    dir: x,
+                };
+            }).forEach(pos => {
+                const nextLoc = Object.values(this.locations).find(x => x.x === pos.x && x.y === pos.y);
+                if (nextLoc !== undefined && visited[`${nextLoc.x},${nextLoc.y}`] === undefined) {
+                    todo.push({
+                        cell: nextLoc,
+                        path: cell.path.concat(pos.dir),
+                    });
+                }
+            });
+        }
+        return undefined;
     }
 }
 
@@ -412,31 +474,23 @@ Advent.GetInput().then((input) => {
     const G = new Game(PC);
     G.badItems.push('giant electromagnet');
     G.badItems.push('molten lava');
+    G.badItems.push('photons');
+    G.badItems.push('infinite loop');
+    G.badItems.push('escape pod');
 
     PC.Run().then(() => {
-        console.log(G.stringBuffer.join(''));
         console.log('Done');
     });
 
-    const autoInput = (str) => {
-        playerInput.setValue(str);
-        playerInput.submit();
-    };
-
+    // initial auto-run commands
     const commandsToRun = ['w', 'n', 'w', 'w', 'w', 'n'];
+    commandsToRun.forEach(G.Command.bind(G));
 
-    G.on('command', () => {
-        if (commandsToRun.length > 0) {
-            const c = commandsToRun.shift();
-            setImmediate(() => {
-                autoInput(c);
-            });
-            return;
-        }
-        if (G.CurrentRoom.items.length > 0) {
-            setImmediate(() => {
-                //autoInput('take all');
-            });
+    // after auto-run commands are done, run back to the start for no real reason other than to prove this out
+    G.once('command', () => {
+        const RouteToStart = G.GetPath(G.CurrentRoom.name, 'Hull Breach');
+        if (RouteToStart.length > 0) {
+            RouteToStart.forEach(G.Command.bind(G));
         }
     });
 }).catch((e) => {
