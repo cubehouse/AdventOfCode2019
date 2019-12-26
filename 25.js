@@ -93,6 +93,21 @@ function ReverseCompass(dir) {
     return compass[(compass.indexOf(dir) + 2) % compass.length];
 }
 
+function combinations(arr) {
+    var fn = function(active, rest, a) {
+        if (active.length === 0 && rest.length === 0)
+            return;
+        if (rest.length === 0) {
+            a.push(active);
+        } else {
+            fn(active.concat(rest[0]), rest.slice(1), a);
+            fn(active, rest.slice(1), a);
+        }
+        return a;
+    }
+    return fn([], arr, []);
+}
+
 // some styles to jazz up the text adventure
 const styles = [
     [/(==\s.+\s==)/g, '{white-bg}{black-fg}'],
@@ -213,7 +228,7 @@ class Game extends EventEmitter {
             this.Command(directions[str]);
             return;
         }
-        if (str === 'take all') {
+        if (str === 'take all' || str === 't') {
             const items = this.locations[this.location].items;
             if (items.length > 0) {
                 items.forEach((i) => {
@@ -222,7 +237,7 @@ class Game extends EventEmitter {
                 return;
             }
         }
-        if (str === 'drop all') {
+        if (str === 'drop all' || str === 'd') {
             this.inv.forEach(i => {
                 this.Command(`drop ${i}`);
             });
@@ -230,8 +245,8 @@ class Game extends EventEmitter {
         }
         this.history.push(str);
         console.log(str);
-
         this.commandWaiting = false;
+        this.emit('exec', str);
         this.PC.InputStr(str);
     }
 
@@ -479,18 +494,71 @@ Advent.GetInput().then((input) => {
     G.badItems.push('escape pod');
 
     PC.Run().then(() => {
+        // we made it out of the checkpoint! check the output text for the password
+        const answerMatch = /You should be able to get in by typing (\d+) on the keypad at the main airlock/.exec(textArea.content);
+        if (answerMatch) {
+            return Advent.Submit(answerMatch[1]).then(() => {
+                process.exit(0);
+            });
+        }
         console.log('Done');
     });
 
     // initial auto-run commands
-    const commandsToRun = ['w', 'n', 'w', 'w', 'w', 'n'];
+    //  this sequence picks up all my items and sits at the Security Checkpoint
+    const commandsToRun = 'ntswtntwntetnetwstwnwntsweesswtwn'.split('');
+    commandsToRun.push('tryitems');
     commandsToRun.forEach(G.Command.bind(G));
 
+    const TakeDropForInv = (newInv) => {
+        newInv.forEach(i => {
+            if (G.inv.indexOf(i) < 0) {
+                G.Command(`take ${i}`);
+            }
+        });
+        G.inv.forEach(i => {
+            if (newInv.indexOf(i) < 0) {
+                G.Command(`drop ${i}`);
+            }
+        });
+    };
+
     // after auto-run commands are done, run back to the start for no real reason other than to prove this out
-    G.once('command', () => {
+    /*G.once('command', () => {
         const RouteToStart = G.GetPath(G.CurrentRoom.name, 'Hull Breach');
         if (RouteToStart.length > 0) {
             RouteToStart.forEach(G.Command.bind(G));
+        }
+    });*/
+    G.on('exec', (cmd) => {
+        if (cmd === 'tryitems') {
+            // pick up all the items then run this command
+            //  my set is hypercube, mouse, prime number, wreath
+            const todo = combinations(G.inv);
+            todo.reverse();
+            const step = () => {
+                const c = todo.shift();
+                if (!c) return;
+                TakeDropForInv(c);
+                G.GetPath(G.CurrentRoom.name, 'Pressure-Sensitive Floor').forEach(G.Command.bind(G));
+                G.once('command', () => {
+                    if (G.CurrentRoom.name === 'Security Checkpoint') {
+                        const match = /are (lighter|heavier) than the/.exec(textArea.content);
+                        if (match && match[1] === 'lighter') {
+                            // remove all todo items that have at least the current set
+                            for(let i=0; i<todo.length; i++) {
+                                if (c.filter(x => todo[i].indexOf(x) >= 0).length === c.length) {
+                                    todo.splice(i, 1);
+                                    i--;
+                                }
+                            }
+                        }
+                        // bounced back to the checkpoint, so try again
+                        setImmediate(step);
+                    }
+                });
+            };
+            setImmediate(step);
         }
     });
 }).catch((e) => {
