@@ -1,11 +1,64 @@
 const EventEmitter = require('events');
+const util = require('util');
+const blessed = require('blessed');
 
 const Advent = new (require('./index.js'))(25, 2019);
-const Screen = new (require('./screen'))({
-    logWidth: 40,
-});
 const Intcode = require('./intcode');
-const blessed = require('blessed');
+
+screen = blessed.screen({
+    smartCSR: true,
+});
+screen.key(['escape', 'q', 'C-c'], () => {
+    process.exit(0);
+});
+
+const textArea = new blessed.box({
+    bottom: 3,
+    top: 0,
+    left: 0,
+    right: 40,
+    tags: true,
+    border: {
+        type: 'line'
+    },
+});
+screen.append(textArea);
+
+const playerInput = new blessed.textbox({
+    height: 3,
+    bottom: 0,
+    left: 0,
+    right: 40,
+    border: {
+        type: 'line',
+    },
+    input: true,
+    inputOnFocus: true,
+    keys: true,
+});
+screen.append(playerInput);
+
+const logBox = new blessed.box({
+    right: 0,
+    left: '100%-40',
+    height: '100%',
+    border: {
+        type: 'line',
+    },
+});
+const logHistory = [];
+console.log = (...args) => {
+    if (args.length > 0) {
+        logHistory.unshift(args.map(x => {
+            if (typeof x === 'string') return x;
+            return util.inspect(x);
+        }).join(' '));
+        logBox.setContent(logHistory.join('\n'));
+    }
+};
+screen.append(logBox);
+
+screen.render();
 
 const directions = {
     'up': 'north',
@@ -27,43 +80,22 @@ function ReverseCompass(dir) {
 }
 
 // some styles to jazz up the text adventure
-Screen.AddStyle(/(==\s.+\s==)/g, '{white-bg}{black-fg}');
-Screen.AddStyle(/(- (?:north\b|south\b|east\b|west\b))/g, '{green-fg}');
-Screen.AddStyle(/(- (?!.*(north\b|south\b|east\b|west\b)).*)/g, '{blue-fg}');
-Screen.AddStyle(/^(Unrecognized .*)$/, '{red-fg}');
-Screen.AddStyle(/^(You can't .*)$/, '{red-fg}');
-Screen.AddStyle(/^(End)$/, '{red-fg}');
+const styles = [
+    [/(==\s.+\s==)/g, '{white-bg}{black-fg}'],
+    [/(- (?:north\b|south\b|east\b|west\b))/g, '{green-fg}'],
+    [/(- (?!.*(north\b|south\b|east\b|west\b)).*)/g, '{blue-fg}'],
+    [/^(Unrecognized .*)$/m, '{red-fg}'],
+    [/^(You (?:ca|do)n't .*)$/m, '{red-fg}'],
+    [/^(End)$/m, '{red-fg}'],
+];
 
 class Game extends EventEmitter {
     constructor(PC) {
         super();
 
         this.PC = PC;
-        this.y = 0;
 
         this.stringBuffer = [];
-
-        Screen.mapBox.bottom = 2;
-        Screen.logBox.bottom = 2;
-        this.inputBox = blessed.textbox({
-            name: "textBox",
-            input: true,
-            inputOnFocus: true,
-            bottom: 0,
-            left: 0,
-            height: 1,
-            width: "100%",
-            style: {
-                fg: "white",
-                bg: "black",
-                focus: {
-                    fg: "yellow"
-                },
-                underline: true
-            },
-            keys: true,
-        });
-        Screen.screen.append(this.inputBox);
 
         // command history
         this.history = [];
@@ -80,14 +112,14 @@ class Game extends EventEmitter {
             this.FlushBuffer();
         });
 
-        this.inputBox.on('submit', () => {
-            const cmd = this.inputBox.value;
+        playerInput.on('submit', () => {
+            const cmd = playerInput.value;
             if (cmd === 'q') process.exit(0);
             this.Command(cmd);
-            this.inputBox.clearValue();
+            playerInput.clearValue();
         });
-        this.inputBox.on('cancel', () => {
-            this.inputBox.focus();
+        playerInput.on('cancel', () => {
+            playerInput.focus();
         });
     }
 
@@ -97,10 +129,13 @@ class Game extends EventEmitter {
             return;
         }
         if (str === 'take all') {
-            this.locations[this.location].items.forEach((i) => {
-                this.Command(`take ${i}`);
-            });
-            return;
+            const items = this.locations[this.location].items;
+            if (items.length > 0) {
+                items.forEach((i) => {
+                    this.Command(`take ${i}`);
+                });
+                return;
+            }
         }
         if (str === 'drop all') {
             this.inv.forEach(i => {
@@ -171,6 +206,10 @@ class Game extends EventEmitter {
         return this.locations[roomData.name];
     }
 
+    GenerateRoomText(loc) {
+        return `== ${loc.name} ==\n${loc.desc}${loc.doors.length > 0 ? '\n\nDoors here lead:\n' + (loc.doors.map(x => `- ${x}`).join('\n')) : ''}${loc.items.length > 0 ? '\n\nItems here:\n' + (loc.items.map(x => `- ${x}`).join('\n')): ''}`;
+    }
+
     FlushBuffer() {
         // parse information from screen
         const text = this.stringBuffer.join('').split(/\n==\s+/);
@@ -207,14 +246,9 @@ class Game extends EventEmitter {
 
         if (rooms.filter(x => x !== undefined).length === 0) {
             const loc = this.locations[this.location];
-            this.stringBuffer = `== ${loc.name} ==\n${loc.desc}${loc.doors.length > 0 ? '\n\nDoors here lead:\n' + (loc.doors.map(x => `- ${x}`).join('\n')) : ''}${loc.items.length > 0 ? '\n\nItems here:\n' + (loc.items.map(x => `- ${x}`).join('\n')): ''}`.split('').concat(this.stringBuffer);
+            this.stringBuffer = this.GenerateRoomText(loc).split('').concat(this.stringBuffer);
         }
 
-        this.y = 0;
-        // we have a location, reset the screen
-        Screen.Clear();
-
-        let x = 0;
         // utter chaos, but I'm reusing my map drawing lib, so I guess this is how it is
         const terminalText = this.stringBuffer.join('').replace(/\-\s(north|east|south|west)\b/g, (match, dir) => {
             const room = this.CurrentRoom.dirs[dir];
@@ -223,22 +257,12 @@ class Game extends EventEmitter {
             } else {
                 return `- ${dir} [???]`;
             }
-        });
-        terminalText.split('').forEach((char) => {
-            if (char === '\n') {
-                // skip leading empty lines
-                if (x === 0 && this.y === 0) return;
-                this.y++;
-                x = 0;
-            } else {
-                if (x >= Screen.mapBox.width) {
-                    x = 0;
-                    this.y++;
-                }
-                Screen.Set(x, this.y, char);
-            }
-            x++;
-        });
+        }).replace(/^\n+/g, ''); // remove leading new lines
+        textArea.setContent(styles.reduce((p, n) => {
+            // apply styles to output text
+            return p.replace(n[0], `${n[1]}$1{/}`);
+        }, terminalText));
+        screen.render();
 
         this.stringBuffer = [];
     }
@@ -256,18 +280,14 @@ class Game extends EventEmitter {
                 this.stringBuffer.push(asciiChar);
 
                 if (this.stringBuffer.slice(-8).join('') === 'Command?') {
+                    this.stringBuffer = this.stringBuffer.slice(0, -8);
                     this.FlushBuffer();
 
-                    this.inputBox.setContent('');
-                    this.inputBox.focus();
+                    playerInput.setContent('');
+                    playerInput.focus();
 
                     this.emit('command');
                 }
-            }
-            if (this.y - Screen.minY > Screen.mapBox.height) {
-                Screen.minY++;
-                const KeysToRemove = Object.values(Screen.Grid).filter(x=>x.y < Screen.minY).map(x => `${x.x},${x.y}`);
-                KeysToRemove.forEach(x => delete Screen.Grid[x]);
             }
         }
     }
@@ -282,6 +302,11 @@ Advent.GetInput().then((input) => {
     });
 
     G.on('command', () => {
+        if (G.CurrentRoom.items.length > 0) {
+            //G.Command('take all');
+        } else {
+
+        }
         //console.log(G.CurrentRoom.dirs);
         //console.log(G.LastDirection);
     });
