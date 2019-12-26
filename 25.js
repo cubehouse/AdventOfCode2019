@@ -240,7 +240,7 @@ class Game extends EventEmitter {
                 if (currentRoom !== undefined) {
                     const directionBack = ReverseCompass(this.LastDirection);
                     room.dirs[directionBack] = currentRoom.name;
-                    currentRoom[this.LastDirection] = room.name;
+                    currentRoom.dirs[this.LastDirection] = room.name;
                 }
             }
             
@@ -309,11 +309,24 @@ Advent.GetInput().then((input) => {
         console.log('Done');
     });
 
+    const autoInput = (str) => {
+        playerInput.setValue(str);
+        playerInput.submit();
+    };
+
+    const commandsToRun = ['w', 'n', 'w', 'w', 'w', 'n'];
+
     G.on('command', () => {
+        if (commandsToRun.length > 0) {
+            const c = commandsToRun.shift();
+            setImmediate(() => {
+                autoInput(c);
+            });
+            return;
+        }
         if (G.CurrentRoom.items.length > 0) {
             setImmediate(() => {
-                playerInput.setValue('take all');
-                playerInput.submit();
+                //autoInput('take all');
             });
         }
     });
