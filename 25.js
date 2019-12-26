@@ -1,3 +1,5 @@
+const EventEmitter = require('events');
+
 const Advent = new (require('./index.js'))(25, 2019);
 const Screen = new (require('./screen'))({
     logWidth: 40,
@@ -16,15 +18,26 @@ const directions = {
     'w': 'west',
 };
 
+const compass = [
+    'north', 'east', 'south', 'west',
+];
+
+function ReverseCompass(dir) {
+    return compass[(compass.indexOf(dir) + 2) % compass.length];
+}
+
 // some styles to jazz up the text adventure
 Screen.AddStyle(/(==\s.+\s==)/g, '{white-bg}{black-fg}');
-Screen.AddStyle(/(- (?:north|south|east|west))/g, '{green-fg}');
-Screen.AddStyle(/(- (?!.*(north|south|east|west)).*)/g, '{blue-fg}');
+Screen.AddStyle(/(- (?:north\b|south\b|east\b|west\b))/g, '{green-fg}');
+Screen.AddStyle(/(- (?!.*(north\b|south\b|east\b|west\b)).*)/g, '{blue-fg}');
 Screen.AddStyle(/^(Unrecognized .*)$/, '{red-fg}');
 Screen.AddStyle(/^(You can't .*)$/, '{red-fg}');
+Screen.AddStyle(/^(End)$/, '{red-fg}');
 
-class Game {
+class Game extends EventEmitter {
     constructor(PC) {
+        super();
+
         this.PC = PC;
         this.y = 0;
 
@@ -62,11 +75,9 @@ class Game {
         this.inv = [];
 
         this.PC.on('output', this.OnOutpurChar.bind(this));
-
-        Screen.screen.key(['up', 'down', 'left', 'right'], (ch, event) => {
-            if (directions[event.name] !== undefined) {
-                this.Command(directions[event.name]);
-            }
+        this.PC.on('done', () => {
+            this.stringBuffer = this.stringBuffer.concat('\nEnd'.split(''));
+            this.FlushBuffer();
         });
 
         this.inputBox.on('submit', () => {
@@ -102,6 +113,13 @@ class Game {
         this.PC.InputStr(str);
     }
 
+    get LastDirection() {
+        const dirs = ['north', 'south', 'east', 'west'];
+        const historyCopy = this.history.slice(0);
+        historyCopy.reverse();
+        return historyCopy.find(x => dirs.indexOf(x) >= 0);
+    }
+
     ParseRoom(text) {
         const hasDoors = text.indexOf('Doors here lead:');
         const hasItems = text.indexOf('Items here:');
@@ -131,13 +149,102 @@ class Game {
             }
         }
 
-        return {
+        const roomData = {
             name: locationName,
             desc: locationDesc,
             doors,
             items,
             text: '== ' + text.replace(/\n+Command\?$/, ''),
+            dirs: {},
         };
+
+        if (this.locations[roomData.name] === undefined) {
+            roomData.doors.forEach(d => roomData.dirs[d] = null);
+            this.locations[roomData.name] = roomData;
+        } else {
+            // update fields of existing room
+            ['desc', 'doors',' items', 'text'].forEach(k => {
+                this.locations[roomData.name][k] = roomData[k];
+            });
+        }
+
+        return this.locations[roomData.name];
+    }
+
+    FlushBuffer() {
+        // parse information from screen
+        const text = this.stringBuffer.join('').split(/\n==\s+/);
+
+        const itemMatch = /You (take|drop) the (.+)\./.exec(text);
+        if (itemMatch) {
+            if (itemMatch[1] === 'take') {
+                this.locations[this.location].items.splice(this.locations[this.location].items.indexOf(itemMatch[2]), 1);
+                this.inv.push(itemMatch[2]);
+                this.inv.sort();
+            } else {
+                this.locations[this.location].items.push(itemMatch[2]);
+                this.inv.splice(this.inv.indexOf(itemMatch[2]), 1);
+            }
+        }
+
+        const currentRoom = this.locations[this.location];
+        
+        const rooms = text.slice(1).map(this.ParseRoom.bind(this));
+        rooms.filter(x => x !== undefined).forEach((room, idx) => {
+            if (idx === 0) {
+                // first room visited through this command is evaluated for connections
+                if (currentRoom !== undefined) {
+                    const directionBack = ReverseCompass(this.LastDirection);
+                    room.dirs[directionBack] = currentRoom.name;
+                    currentRoom[this.LastDirection] = room.name;
+                }
+            }
+            
+            this.location = room.name;
+
+            this.emit('room', room);
+        });
+
+        if (rooms.filter(x => x !== undefined).length === 0) {
+            const loc = this.locations[this.location];
+            this.stringBuffer = `== ${loc.name} ==\n${loc.desc}${loc.doors.length > 0 ? '\n\nDoors here lead:\n' + (loc.doors.map(x => `- ${x}`).join('\n')) : ''}${loc.items.length > 0 ? '\n\nItems here:\n' + (loc.items.map(x => `- ${x}`).join('\n')): ''}`.split('').concat(this.stringBuffer);
+        }
+
+        this.y = 0;
+        // we have a location, reset the screen
+        Screen.Clear();
+
+        let x = 0;
+        // utter chaos, but I'm reusing my map drawing lib, so I guess this is how it is
+        const terminalText = this.stringBuffer.join('').replace(/\-\s(north|east|south|west)\b/g, (match, dir) => {
+            const room = this.CurrentRoom.dirs[dir];
+            if (room) {
+                return `- ${dir} [${room}]`
+            } else {
+                return `- ${dir} [???]`;
+            }
+        });
+        terminalText.split('').forEach((char) => {
+            if (char === '\n') {
+                // skip leading empty lines
+                if (x === 0 && this.y === 0) return;
+                this.y++;
+                x = 0;
+            } else {
+                if (x >= Screen.mapBox.width) {
+                    x = 0;
+                    this.y++;
+                }
+                Screen.Set(x, this.y, char);
+            }
+            x++;
+        });
+
+        this.stringBuffer = [];
+    }
+
+    get CurrentRoom() {
+        return this.locations[this.location];
     }
 
     OnOutpurChar(char) {
@@ -149,59 +256,12 @@ class Game {
                 this.stringBuffer.push(asciiChar);
 
                 if (this.stringBuffer.slice(-8).join('') === 'Command?') {
-                    // parse information from screen
-                    const text = this.stringBuffer.join('').split(/\n==\s+/);
-
-                    const itemMatch = /You (take|drop) the (.+)\./.exec(text);
-                    if (itemMatch) {
-                        if (itemMatch[1] === 'take') {
-                            this.locations[this.location].items.splice(this.locations[this.location].items.indexOf(itemMatch[2]), 1);
-                            this.inv.push(itemMatch[2]);
-                            this.inv.sort();
-                        } else {
-                            this.locations[this.location].items.push(itemMatch[2]);
-                            this.inv.splice(this.inv.indexOf(itemMatch[2]), 1);
-                        }
-                    }
-                    
-                    const rooms = text.slice(1).map(this.ParseRoom);
-                    rooms.forEach(room => {
-                        if (room !== undefined) {
-                            this.locations[room.name] = room;
-                            this.location = room.name;
-                        }
-                    });
-
-                    if (rooms.filter(x => x !== undefined).length === 0) {
-                        const loc = this.locations[this.location];
-                        this.stringBuffer = `== ${loc.name} ==\n${loc.desc}${loc.doors.length > 0 ? '\n\nDoors here lead:\n' + (loc.doors.map(x => `- ${x}`).join('\n')) : ''}${loc.items.length > 0 ? '\n\nItems here:\n' + (loc.items.map(x => `- ${x}`).join('\n')): ''}`.split('').concat(this.stringBuffer);
-                    }
-
-                    this.y = 0;
-                    // we have a location, reset the screen
-                    Screen.Clear();
-
-                    let x = 0;
-                    this.stringBuffer.forEach((char) => {
-                        if (char === '\n') {
-                            // skip leading empty lines
-                            if (x === 0 && this.y === 0) return;
-                            this.y++;
-                            x = 0;
-                        } else {
-                            if (x >= Screen.mapBox.width) {
-                                x = 0;
-                                this.y++;
-                            }
-                            Screen.Set(x, this.y, char);
-                        }
-                        x++;
-                    });
-
-                    this.stringBuffer = [];
+                    this.FlushBuffer();
 
                     this.inputBox.setContent('');
                     this.inputBox.focus();
+
+                    this.emit('command');
                 }
             }
             if (this.y - Screen.minY > Screen.mapBox.height) {
@@ -217,7 +277,13 @@ Advent.GetInput().then((input) => {
     const PC = new Intcode(input);
     const G = new Game(PC);
     PC.Run().then(() => {
+        console.log(G.stringBuffer.join(''));
         console.log('Done');
+    });
+
+    G.on('command', () => {
+        //console.log(G.CurrentRoom.dirs);
+        //console.log(G.LastDirection);
     });
 }).catch((e) => {
     console.log(e);
