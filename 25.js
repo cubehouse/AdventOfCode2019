@@ -97,6 +97,8 @@ class Game extends EventEmitter {
 
         this.stringBuffer = [];
 
+        this.badItems = [];
+
         // command history
         this.history = [];
         // track all locations the player navigates
@@ -180,7 +182,10 @@ class Game extends EventEmitter {
             const itemFinder = /\-\s+(.+)/g;
             let match;
             while(match =itemFinder.exec(itemsText)) {
-                items.push(match[1]);
+                // ignore silly items that are annoying
+                if (this.badItems.indexOf(match[1]) < 0) {
+                    items.push(match[1]);
+                }
             }
         }
 
@@ -296,6 +301,9 @@ class Game extends EventEmitter {
 Advent.GetInput().then((input) => {
     const PC = new Intcode(input);
     const G = new Game(PC);
+    G.badItems.push('giant electromagnet');
+    G.badItems.push('molten lava');
+
     PC.Run().then(() => {
         console.log(G.stringBuffer.join(''));
         console.log('Done');
@@ -303,12 +311,11 @@ Advent.GetInput().then((input) => {
 
     G.on('command', () => {
         if (G.CurrentRoom.items.length > 0) {
-            //G.Command('take all');
-        } else {
-
+            setImmediate(() => {
+                playerInput.setValue('take all');
+                playerInput.submit();
+            });
         }
-        //console.log(G.CurrentRoom.dirs);
-        //console.log(G.LastDirection);
     });
 }).catch((e) => {
     console.log(e);
