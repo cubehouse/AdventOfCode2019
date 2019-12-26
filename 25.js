@@ -54,9 +54,16 @@ console.log = (...args) => {
             return util.inspect(x);
         }).join(' '));
         logBox.setContent(logHistory.join('\n'));
+        screen.render();
     }
 };
 screen.append(logBox);
+
+const mapBox = new blessed.box({
+    right: 41,
+    bottom: 4,
+});
+screen.append(mapBox);
 
 screen.render();
 
@@ -75,6 +82,13 @@ const compass = [
     'north', 'east', 'south', 'west',
 ];
 
+const compassGrid = {
+    'north': {x: 0, y: -1},
+    'east': {x: 1, y: 0},
+    'south': {x: 0, y: 1},
+    'west': {x: -1, y: 0},
+};
+
 function ReverseCompass(dir) {
     return compass[(compass.indexOf(dir) + 2) % compass.length];
 }
@@ -88,6 +102,57 @@ const styles = [
     [/^(You (?:ca|do)n't .*)$/m, '{red-fg}'],
     [/^(End)$/m, '{red-fg}'],
 ];
+
+class Minimap {
+    constructor() {
+        this.grid = {};
+        this.minX = null;
+        this.maxX = null;
+        this.minY = null;
+        this.maxY = null;
+    }
+
+    Set(X, Y, char) {
+        this.grid[`${X},${Y}`] = char;
+
+        if (this.minX === null) {
+            this.minX = X;
+            this.maxX = X;
+            this.minY = Y;
+            this.maxY = Y;
+        } else {
+            this.minX = Math.min(this.minX, X);
+            this.maxX = Math.max(this.maxX, X);
+            this.minY = Math.min(this.minY, Y);
+            this.maxY = Math.max(this.maxY, Y);
+        }
+    }
+
+    get width() {
+        if (this.minX === null) return 0;
+        return this.maxX - this.minX;
+    }
+    
+    get height() {
+        if (this.minY === null) return 0;
+        return this.maxY - this.minY;
+    }
+
+    Print() {
+        if (this.minX === null) return '';
+        const w = this.width;
+        const h = this.height;
+        const rows = [];
+        for(let y=this.minY; y<=this.maxY; y++) {
+            const row = [];
+            for(let x=this.minX; x<=this.maxX; x++) {
+                row.push(this.grid[`${x},${y}`] || ' ');
+            }
+            rows.push(row.join(''));
+        }
+        return rows.join('\n');
+    }
+}
 
 class Game extends EventEmitter {
     constructor(PC) {
@@ -107,6 +172,11 @@ class Game extends EventEmitter {
         this.location = null;
         // player inventory
         this.inv = [];
+
+        // minimap grid
+        //  game map overlaps and isn't on a grid, which makes me sad
+        //  but I started writing it and I like it, so it's staying
+        this.map = new Minimap();
 
         this.PC.on('output', this.OnOutpurChar.bind(this));
         this.PC.on('done', () => {
@@ -196,11 +266,19 @@ class Game extends EventEmitter {
             items,
             text: '== ' + text.replace(/\n+Command\?$/, ''),
             dirs: {},
+            x: null,
+            y: null,
         };
 
         if (this.locations[roomData.name] === undefined) {
             roomData.doors.forEach(d => roomData.dirs[d] = null);
             this.locations[roomData.name] = roomData;
+            if (Object.keys(this.locations).length === 1) {
+                // first room! give it (0,0)
+                roomData.x = 0;
+                roomData.y = 0;
+                this.map.Set(0, 0, 'X');
+            }
         } else {
             // update fields of existing room
             ['desc', 'doors',' items', 'text'].forEach(k => {
@@ -241,10 +319,36 @@ class Game extends EventEmitter {
                     const directionBack = ReverseCompass(this.LastDirection);
                     room.dirs[directionBack] = currentRoom.name;
                     currentRoom.dirs[this.LastDirection] = room.name;
+
+                    if (currentRoom.x !== null) {
+                        const lastDelta = compassGrid[this.LastDirection];
+                        room.x = currentRoom.x + lastDelta.x;
+                        room.y = currentRoom.y + lastDelta.y;
+                        this.map.Set(room.x * 2, room.y * 2, '.');
+
+                        room.doors.forEach((d) => {
+                            const delta = compassGrid[d];
+                            this.map.Set(
+                                (room.x * 2) + delta.x,
+                                (room.y * 2) + delta.y,
+                                delta.x !== 0 ? '-' : '|',
+                            );
+                        });
+                    }
                 }
+            }
+
+            const prevRoom = this.CurrentRoom;
+            if (prevRoom !== undefined && prevRoom.x !== undefined) {
+                this.map.Set(prevRoom.x * 2, prevRoom.y * 2, '.');
             }
             
             this.location = room.name;
+
+            const newRoom = this.CurrentRoom;
+            if (newRoom.x !== undefined) {
+                this.map.Set(newRoom.x * 2, newRoom.y * 2, 'X');
+            }
 
             this.emit('room', room);
         });
@@ -254,8 +358,8 @@ class Game extends EventEmitter {
             this.stringBuffer = this.GenerateRoomText(loc).split('').concat(this.stringBuffer);
         }
 
-        // utter chaos, but I'm reusing my map drawing lib, so I guess this is how it is
         const terminalText = this.stringBuffer.join('').replace(/\-\s(north|east|south|west)\b/g, (match, dir) => {
+            // add room destinations to screen output
             const room = this.CurrentRoom.dirs[dir];
             if (room) {
                 return `- ${dir} [${room}]`
@@ -267,6 +371,11 @@ class Game extends EventEmitter {
             // apply styles to output text
             return p.replace(n[0], `${n[1]}$1{/}`);
         }, terminalText));
+
+        mapBox.width = this.map.width + 1;
+        mapBox.height = this.map.height + 1;
+        mapBox.setContent(this.map.Print());
+
         screen.render();
 
         this.stringBuffer = [];
