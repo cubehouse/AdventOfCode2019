@@ -1,78 +1,110 @@
 const Advent = new (require('./index.js'))(24, 2019);
-const Screen = new (require('./screen'))({
-    simulate: true,
-});
+
+const dirs = [
+    [0, 1],
+    [1, 0],
+    [0, -1],
+    [-1, 0],
+];
 
 class Tile {
-    constructor(inputTile) {
-        this.tiles = [];
-        inputTile.forEach((row, y) => {
+    constructor(initialState = [], depth = 0) {
+        this.grid = new Array(5).fill(0).map(x => new Array(5).fill('.'));
+        initialState.forEach((row, y) => {
             row.split('').forEach((char, x) => {
-                Screen.Set(x, y, char);
-                this.tiles.push(Screen.Get(x, y));
+                this.grid[y][x] = char;
             });
         });
+
+        this.depth = 0;
 
         this.tilePoints = new Array(25).fill(0).map((x, idx) => Math.pow(2, idx));
 
         this.rating = this.GenRating();
     }
 
-    GenRating() {
-        return this.tiles.reduce((p, n, idx) => {
-            return p + ((n.val === '#') ? this.tilePoints[idx] : 0);
-        }, 0);
+    ForEachCell(func) {
+        this.grid.forEach((row, y) => {
+            row.forEach((char, x) => {
+                const idx = (y * 5) + x;
+                func(x, y, char, idx);
+            });
+        });
     }
 
-    Tick() {
-        const toApply = [];
-        this.tiles.forEach(t => {
-            const ns = Screen.GetNeighbours(t).filter(x => x !== undefined).map(x => x.val);
-            const nearbyBugs = ns.filter(x => x === '#').length;
-            if (t.val === '.') {
-                if (nearbyBugs === 1 || nearbyBugs === 2) {
-                    toApply.push({
-                        x: t.x,
-                        y: t.y,
-                        val: '#',
-                    });
-                }
-            } else if (t.val === '#') {
-                if (nearbyBugs !== 1) {
-                    toApply.push({
-                        x: t.x,
-                        y: t.y,
-                        val: '.',
-                    });
-                }
+    Tick(updateCells = true) {
+        const todo = [];
+        this.ForEachCell((x, y, char) => {
+            // get neighbours
+            const n = this.GetNeighbours(x, y);
+            // count how many bugs there are
+            const bugN = n.filter(x => x === '#').length;
+
+            // simulate life
+            if (char === '#' && bugN !== 1) {
+                todo.push({
+                    x,
+                    y,
+                    char: '.',
+                    depth: this.depth,
+                });
+            } else if (char === '.' && (bugN === 2 || bugN === 1)) {
+                todo.push({
+                    x,
+                    y,
+                    char: '#',
+                    depth: this.depth,
+                });
             }
         });
 
-        toApply.forEach((a) => {
-            Screen.Set(a.x, a.y, a.val);
-        });
+        if (updateCells) {
+            // process new life
+            todo.forEach(t => {
+                this.grid[t.y][t.x] = t.char;
+            });
+            this.rating = this.GenRating();
+        }
 
-        this.rating = this.GenRating();
+        return todo;
+    }
+
+    GetNeighbours(x, y) {
+        return dirs.map(d => {return {x: x + d[0], y: y + d[1]};}).map(pos => {
+            if (!this.grid[pos.y]) return undefined;
+            return this.grid[pos.y][pos.x];
+        }).filter(x => x !== undefined);
+    }
+
+    Print() {
+        this.grid.forEach((row) => {
+            console.log(row.join(''));
+        });
+    }
+
+    GenRating() {
+        let score = 0;
+        this.ForEachCell((x, y, char, idx) => {
+            if (char === '#') {
+                score += this.tilePoints[idx];
+            }
+        });
+        return score;
     }
 }
 
 Advent.GetInput().then((input) => {
+    // part 1
     const T = new Tile(input);
     const Ratings = {};
-    const todo = [1];
-    const step = () => {
-        if (Ratings[T.rating] !== undefined) {
-            return;
-        }
+    while(true) {
         Ratings[T.rating] = 1;
         T.Tick();
-        todo.push(1);
+        if (Ratings[T.rating] !== undefined) {
+            break;
+        }
     };
-    return Screen.RunTodoList(todo, step).then(() => {
-        return Advent.Submit(T.rating).then(() => {
-            
-        });
-    });
+    return Advent.Submit(T.rating);
 }).catch((e) => {
-    console.log(e);
+    console.error(e);
 });
