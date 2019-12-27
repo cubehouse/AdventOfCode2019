@@ -196,6 +196,7 @@ class Com extends EventEmitter {
 
             const WhileRun = () => {
                 if (this.done) {
+                    this.emit('done');
                     this.running = false;
                     return resolve(outputs);
                 }
