@@ -11,6 +11,6 @@
   "dependencies": {
     "blessed": "^0.1.81",
     "dotenv": "^8.2.0",
-    "terminal-kit": "^1.32.2"
+    "terminal-kit": "^2.1.8"
   }
 }
